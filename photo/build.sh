@@ -7,7 +7,9 @@ pip install -r requirements.txt
 if [ -f "manage.py" ]; then
     python manage.py collectstatic --noinput
     python manage.py migrate
+    python manage.py seed_data
 elif [ -f "photo/manage.py" ]; then
     python photo/manage.py collectstatic --noinput
     python photo/manage.py migrate
+    python photo/manage.py seed_data
 fi
