@@ -1,0 +1,1405 @@
+openapi: 3.0.3
+info:
+  title: Plateforme Photo Scan API
+  version: 1.0.0
+  description: |-
+    Documentation interactive de l'API backend Django REST Framework pour la plateforme événementielle avec reconnaissance faciale (Burkina Faso).
+
+    Fonctionnalités principales :
+    - Gestion des événements et galeries médias
+    - Upsert des participants via numéro WhatsApp
+    - Ingestion sécurisée de selfie de référence & matching facial 512D
+    - Endpoints RGPD de suppression et droit à l'oubli
+    - Administration sécurisée via token JWT
+paths:
+  /admin/contacts/:
+    get:
+      operationId: admin_contacts_retrieve
+      description: Récupère les coordonnées des participants et indique si leur référence
+        faciale est valide.
+      summary: Liste des contacts participants
+      parameters:
+      - in: query
+        name: event
+        schema:
+          type: string
+        description: Filtrer les participants par slug d'événement
+      tags:
+      - Administration
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /admin/events/{slug}/logo/:
+    post:
+      operationId: admin_events_logo_create
+      description: Upload d'un logo (champ `file`) et mise à jour de l'événement.
+      summary: Upload de logo pour un événement
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - Administration
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SingleFileUploadRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SingleFileUploadRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /admin/events/{slug}/media/:
+    post:
+      operationId: admin_events_media_create
+      description: |-
+        Téléversement d'une ou plusieurs photos pour un événement (champ `files`).
+        Pour chaque fichier :
+        1. Enregistre le média original.
+        2. Crée la miniature Pillow (400x400 max) avec correction EXIF.
+        3. Détecte tous les visages et génère les embeddings 512D (`FaceIndex`).
+        4. Actualise automatiquement le matching pour les participants déjà inscrits.
+      summary: Upload multiple de photos avec indexation faciale
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - Administration
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MultiFileUploadRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MultiFileUploadRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /admin/media/{id}/:
+    delete:
+      operationId: admin_media_destroy
+      description: Supprime la photo et tous ses index faciaux associés.
+      summary: Suppression d'une photo
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Administration
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /admin/stats/:
+    get:
+      operationId: admin_stats_retrieve
+      description: Retourne le nombre total d'événements, photos, participants et
+        téléchargements.
+      summary: Statistiques globales
+      tags:
+      - Administration
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/admin/contacts/:
+    get:
+      operationId: api_v1_admin_contacts_retrieve
+      description: Récupère les coordonnées des participants et indique si leur référence
+        faciale est valide.
+      summary: Liste des contacts participants
+      parameters:
+      - in: query
+        name: event
+        schema:
+          type: string
+        description: Filtrer les participants par slug d'événement
+      tags:
+      - Administration
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/admin/events/{slug}/logo/:
+    post:
+      operationId: api_v1_admin_events_logo_create
+      description: Upload d'un logo (champ `file`) et mise à jour de l'événement.
+      summary: Upload de logo pour un événement
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - Administration
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SingleFileUploadRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SingleFileUploadRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/admin/events/{slug}/media/:
+    post:
+      operationId: api_v1_admin_events_media_create
+      description: |-
+        Téléversement d'une ou plusieurs photos pour un événement (champ `files`).
+        Pour chaque fichier :
+        1. Enregistre le média original.
+        2. Crée la miniature Pillow (400x400 max) avec correction EXIF.
+        3. Détecte tous les visages et génère les embeddings 512D (`FaceIndex`).
+        4. Actualise automatiquement le matching pour les participants déjà inscrits.
+      summary: Upload multiple de photos avec indexation faciale
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - Administration
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/MultiFileUploadRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/MultiFileUploadRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/admin/media/{id}/:
+    delete:
+      operationId: api_v1_admin_media_destroy
+      description: Supprime la photo et tous ses index faciaux associés.
+      summary: Suppression d'une photo
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Administration
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/admin/stats/:
+    get:
+      operationId: api_v1_admin_stats_retrieve
+      description: Retourne le nombre total d'événements, photos, participants et
+        téléchargements.
+      summary: Statistiques globales
+      tags:
+      - Administration
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/auth/login/:
+    post:
+      operationId: api_v1_auth_login_create
+      description: 'Authentifie un administrateur à l''aide de son email (ex: admin@clovis-dev.bf)
+        et retourne les tokens access & refresh.'
+      summary: Connexion JWT (email ou username)
+      tags:
+      - Authentification
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomTokenObtainPairRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CustomTokenObtainPairRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CustomTokenObtainPairRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomTokenObtainPair'
+          description: ''
+  /api/v1/auth/refresh/:
+    post:
+      operationId: api_v1_auth_refresh_create
+      description: Génère un nouveau token d'accès à partir du token de rafraîchissement.
+      summary: Rafraîchissement de token JWT
+      tags:
+      - Authentification
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /api/v1/events/:
+    get:
+      operationId: api_v1_events_list
+      description: Retourne la liste des événements ordonnés par date décroissante
+        (optimisé SQL sans N+1).
+      summary: Lister tous les événements publics
+      tags:
+      - Événements
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EventList'
+          description: ''
+  /api/v1/events/{slug}/:
+    get:
+      operationId: api_v1_events_retrieve
+      description: Récupère la fiche détaillée d'un événement avec sa galerie de photos
+        et sa vidéo.
+      summary: Détail d'un événement
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - Événements
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventDetail'
+          description: ''
+    patch:
+      operationId: api_v1_events_partial_update
+      description: Permet à l'organisateur / admin de modifier les informations d'un
+        événement.
+      summary: Mise à jour partielle d'un événement
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - Administration
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedEventPatchRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedEventPatchRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedEventPatchRequest'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventDetail'
+          description: ''
+  /api/v1/events/{slug}/my-photos/:
+    get:
+      operationId: api_v1_events_my_photos_retrieve
+      description: |-
+        Retourne les photos reconnues pour un participant donné sur un événement.
+        Prend en charge `?participant={id}` ou `?phone={numéro WhatsApp}` pour garantir le bon fonctionnement même lorsque le frontend n'a pas encore persisté l'identifiant.
+      summary: Photos matchées du participant
+      parameters:
+      - in: query
+        name: participant
+        schema:
+          type: integer
+        description: ID unique du participant retourné lors du POST /participants/
+      - in: query
+        name: phone
+        schema:
+          type: string
+        description: 'Numéro WhatsApp du participant (ex: ''+226 70123456'')'
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - Participants
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyPhotosResponse'
+          description: ''
+  /api/v1/events/{slug}/photos/:
+    get:
+      operationId: api_v1_events_photos_list
+      description: Liste l'ensemble des photos publiques d'un événement.
+      summary: Galerie de photos publiques d'un événement
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - Événements
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PhotoItem'
+          description: ''
+  /api/v1/participants/:
+    post:
+      operationId: api_v1_participants_create
+      description: |-
+        Enregistre un participant ou retourne son profil s'il existe déjà grâce à son numéro WhatsApp (`phone`).
+        Retourne l'ID unique requis pour les interactions suivantes.
+      summary: Identifier ou enregistrer un participant (Login / Upsert)
+      tags:
+      - Participants
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParticipantRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ParticipantRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ParticipantRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Participant'
+          description: ''
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Participant'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/participants/{id}/:
+    delete:
+      operationId: api_v1_participants_destroy
+      description: Supprime définitivement le participant ainsi que toutes ses données
+        et associations.
+      summary: Droit à l'oubli intégral (RGPD)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Participants
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/v1/participants/{id}/face-reference/:
+    post:
+      operationId: api_v1_participants_face_reference_create
+      description: |-
+        Reçoit le selfie de référence du participant (JPEG ou PNG via champ `file`).
+        1. Vérifie la qualité (taille >= 200x200, netteté >= 50, 1 seul visage centré).
+        2. Extrait l'embedding 512 dimensions InsightFace.
+        3. **Supprime immédiatement l'image brute (conformité RGPD)**.
+        4. Déclenche le matching asynchrone sur l'événement (`?event={slug}`).
+      summary: Uploader le selfie de référence
+      parameters:
+      - in: query
+        name: event
+        schema:
+          type: string
+        description: Slug de l'événement concerné pour le matching ciblé
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Participants
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SingleFileUploadRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SingleFileUploadRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    delete:
+      operationId: api_v1_participants_face_reference_destroy
+      description: Supprime l'embedding facial du participant et réinitialise son
+        statut à 'no_reference'.
+      summary: Supprimer la référence faciale (RGPD)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Participants
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /auth/login/:
+    post:
+      operationId: auth_login_create
+      description: 'Authentifie un administrateur à l''aide de son email (ex: admin@clovis-dev.bf)
+        et retourne les tokens access & refresh.'
+      summary: Connexion JWT (email ou username)
+      tags:
+      - Authentification
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomTokenObtainPairRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CustomTokenObtainPairRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CustomTokenObtainPairRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomTokenObtainPair'
+          description: ''
+  /auth/refresh/:
+    post:
+      operationId: auth_refresh_create
+      description: Génère un nouveau token d'accès à partir du token de rafraîchissement.
+      summary: Rafraîchissement de token JWT
+      tags:
+      - Authentification
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/TokenRefreshRequest'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRefresh'
+          description: ''
+  /events/:
+    get:
+      operationId: events_list
+      description: Retourne la liste des événements ordonnés par date décroissante
+        (optimisé SQL sans N+1).
+      summary: Lister tous les événements publics
+      tags:
+      - Événements
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EventList'
+          description: ''
+  /events/{slug}/:
+    get:
+      operationId: events_retrieve
+      description: Récupère la fiche détaillée d'un événement avec sa galerie de photos
+        et sa vidéo.
+      summary: Détail d'un événement
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - Événements
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventDetail'
+          description: ''
+    patch:
+      operationId: events_partial_update
+      description: Permet à l'organisateur / admin de modifier les informations d'un
+        événement.
+      summary: Mise à jour partielle d'un événement
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - Administration
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchedEventPatchRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/PatchedEventPatchRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/PatchedEventPatchRequest'
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventDetail'
+          description: ''
+  /events/{slug}/my-photos/:
+    get:
+      operationId: events_my_photos_retrieve
+      description: |-
+        Retourne les photos reconnues pour un participant donné sur un événement.
+        Prend en charge `?participant={id}` ou `?phone={numéro WhatsApp}` pour garantir le bon fonctionnement même lorsque le frontend n'a pas encore persisté l'identifiant.
+      summary: Photos matchées du participant
+      parameters:
+      - in: query
+        name: participant
+        schema:
+          type: integer
+        description: ID unique du participant retourné lors du POST /participants/
+      - in: query
+        name: phone
+        schema:
+          type: string
+        description: 'Numéro WhatsApp du participant (ex: ''+226 70123456'')'
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - Participants
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyPhotosResponse'
+          description: ''
+  /events/{slug}/photos/:
+    get:
+      operationId: events_photos_list
+      description: Liste l'ensemble des photos publiques d'un événement.
+      summary: Galerie de photos publiques d'un événement
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - Événements
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PhotoItem'
+          description: ''
+  /participants/:
+    post:
+      operationId: participants_create
+      description: |-
+        Enregistre un participant ou retourne son profil s'il existe déjà grâce à son numéro WhatsApp (`phone`).
+        Retourne l'ID unique requis pour les interactions suivantes.
+      summary: Identifier ou enregistrer un participant (Login / Upsert)
+      tags:
+      - Participants
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParticipantRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ParticipantRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ParticipantRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Participant'
+          description: ''
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Participant'
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /participants/{id}/:
+    delete:
+      operationId: participants_destroy
+      description: Supprime définitivement le participant ainsi que toutes ses données
+        et associations.
+      summary: Droit à l'oubli intégral (RGPD)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Participants
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /participants/{id}/face-reference/:
+    post:
+      operationId: participants_face_reference_create
+      description: |-
+        Reçoit le selfie de référence du participant (JPEG ou PNG via champ `file`).
+        1. Vérifie la qualité (taille >= 200x200, netteté >= 50, 1 seul visage centré).
+        2. Extrait l'embedding 512 dimensions InsightFace.
+        3. **Supprime immédiatement l'image brute (conformité RGPD)**.
+        4. Déclenche le matching asynchrone sur l'événement (`?event={slug}`).
+      summary: Uploader le selfie de référence
+      parameters:
+      - in: query
+        name: event
+        schema:
+          type: string
+        description: Slug de l'événement concerné pour le matching ciblé
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Participants
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/SingleFileUploadRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/SingleFileUploadRequest'
+        required: true
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '202':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+    delete:
+      operationId: participants_face_reference_destroy
+      description: Supprime l'embedding facial du participant et réinitialise son
+        statut à 'no_reference'.
+      summary: Supprimer la référence faciale (RGPD)
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: integer
+        required: true
+      tags:
+      - Participants
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+components:
+  schemas:
+    CustomTokenObtainPair:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+    CustomTokenObtainPairRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          writeOnly: true
+          minLength: 1
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+        email:
+          type: string
+          format: email
+          minLength: 1
+      required:
+      - password
+    EventDetail:
+      type: object
+      properties:
+        slug:
+          type: string
+          maxLength: 50
+          pattern: ^[-a-zA-Z0-9_]+$
+        name:
+          type: string
+          maxLength: 200
+        tagline:
+          type: string
+          maxLength: 300
+        description:
+          type: string
+        logoUrl:
+          type: string
+          format: uri
+          readOnly: true
+        city:
+          type: string
+          maxLength: 100
+        venue:
+          type: string
+          maxLength: 200
+        date:
+          type: string
+          format: date
+        dateLabel:
+          type: string
+          readOnly: true
+        status:
+          $ref: '#/components/schemas/EventStatusEnum'
+        cover:
+          type: string
+          format: uri
+          readOnly: true
+        theme:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        organizer:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        highlights: {}
+        photos:
+          type: array
+          items:
+            $ref: '#/components/schemas/PhotoItem'
+          readOnly: true
+        video:
+          allOf:
+          - $ref: '#/components/schemas/VideoItem'
+          readOnly: true
+        participants:
+          type: integer
+          readOnly: true
+        photosCount:
+          type: integer
+          readOnly: true
+      required:
+      - city
+      - cover
+      - date
+      - dateLabel
+      - description
+      - logoUrl
+      - name
+      - organizer
+      - participants
+      - photos
+      - photosCount
+      - slug
+      - tagline
+      - theme
+      - video
+    EventList:
+      type: object
+      properties:
+        slug:
+          type: string
+          maxLength: 50
+          pattern: ^[-a-zA-Z0-9_]+$
+        name:
+          type: string
+          maxLength: 200
+        tagline:
+          type: string
+          maxLength: 300
+        description:
+          type: string
+        logoUrl:
+          type: string
+          format: uri
+          readOnly: true
+        city:
+          type: string
+          maxLength: 100
+        venue:
+          type: string
+          maxLength: 200
+        date:
+          type: string
+          format: date
+        dateLabel:
+          type: string
+          readOnly: true
+        status:
+          $ref: '#/components/schemas/EventStatusEnum'
+        cover:
+          type: string
+          format: uri
+          readOnly: true
+        theme:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        organizer:
+          type: object
+          additionalProperties: {}
+          readOnly: true
+        highlights: {}
+        photos:
+          type: array
+          items:
+            $ref: '#/components/schemas/PhotoItem'
+          readOnly: true
+        video:
+          allOf:
+          - $ref: '#/components/schemas/VideoItem'
+          readOnly: true
+        participants:
+          type: integer
+          readOnly: true
+        photosCount:
+          type: integer
+          readOnly: true
+      required:
+      - city
+      - cover
+      - date
+      - dateLabel
+      - description
+      - logoUrl
+      - name
+      - organizer
+      - participants
+      - photos
+      - photosCount
+      - slug
+      - tagline
+      - theme
+      - video
+    EventPatchStatusEnum:
+      enum:
+      - en_ligne
+      - traitement
+      - archive
+      type: string
+      description: |-
+        * `en_ligne` - en_ligne
+        * `traitement` - traitement
+        * `archive` - archive
+    EventStatusEnum:
+      enum:
+      - en_ligne
+      - traitement
+      - archive
+      type: string
+      description: |-
+        * `en_ligne` - En ligne
+        * `traitement` - Traitement
+        * `archive` - Archive
+    MultiFileUploadRequest:
+      type: object
+      properties:
+        files:
+          type: array
+          items:
+            type: string
+            format: binary
+          description: Sélection de photos à téléverser et indexer
+      required:
+      - files
+    MyPhotosResponse:
+      type: object
+      properties:
+        status:
+          $ref: '#/components/schemas/MyPhotosResponseStatusEnum'
+        photos:
+          type: array
+          items:
+            type: object
+            additionalProperties: {}
+      required:
+      - photos
+      - status
+    MyPhotosResponseStatusEnum:
+      enum:
+      - no_reference
+      - pending
+      - ready
+      type: string
+      description: |-
+        * `no_reference` - no_reference
+        * `pending` - pending
+        * `ready` - ready
+    Participant:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phone:
+          type: string
+          maxLength: 30
+      required:
+      - firstName
+      - id
+      - lastName
+      - phone
+    ParticipantRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+        lastName:
+          type: string
+          minLength: 1
+        phone:
+          type: string
+          minLength: 1
+          maxLength: 30
+      required:
+      - firstName
+      - lastName
+      - phone
+    PatchedEventPatchRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: Nom de l'événement
+        tagline:
+          type: string
+          minLength: 1
+        description:
+          type: string
+          minLength: 1
+        city:
+          type: string
+          minLength: 1
+        venue:
+          type: string
+          minLength: 1
+        status:
+          $ref: '#/components/schemas/EventPatchStatusEnum'
+        accent_color:
+          type: string
+          minLength: 1
+        accent_text_color:
+          type: string
+          minLength: 1
+        organizer_name:
+          type: string
+          minLength: 1
+        organizer_about:
+          type: string
+          minLength: 1
+        organizer_website:
+          type: string
+          format: uri
+          minLength: 1
+        organizer_phone:
+          type: string
+          minLength: 1
+        highlights:
+          type: array
+          items:
+            type: string
+            minLength: 1
+    PhotoItem:
+      type: object
+      properties:
+        id:
+          type: string
+        src:
+          type: string
+          format: uri
+          readOnly: true
+        legend:
+          type: string
+          maxLength: 200
+        isPublic:
+          type: boolean
+      required:
+      - id
+      - isPublic
+      - src
+    SingleFileUploadRequest:
+      type: object
+      properties:
+        file:
+          type: string
+          format: binary
+          description: Fichier image (JPEG ou PNG)
+      required:
+      - file
+    TokenRefresh:
+      type: object
+      properties:
+        access:
+          type: string
+          readOnly: true
+        refresh:
+          type: string
+      required:
+      - access
+      - refresh
+    TokenRefreshRequest:
+      type: object
+      properties:
+        refresh:
+          type: string
+          minLength: 1
+      required:
+      - refresh
+    VideoItem:
+      type: object
+      properties:
+        src:
+          type: string
+          format: uri
+          readOnly: true
+        title:
+          type: string
+          maxLength: 200
+        duration:
+          type: string
+          maxLength: 20
+        sizeLabel:
+          type: string
+      required:
+      - duration
+      - sizeLabel
+      - src
+      - title
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+    jwtAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+tags:
+- name: Authentification
+  description: Connexion et rafraîchissement des tokens JWT
+- name: Événements
+  description: Consultation publique des événements et galeries
+- name: Participants
+  description: Enregistrement, selfies de référence et RGPD
+- name: Administration
+  description: Statistiques, upload médias et gestion des organisateurs
