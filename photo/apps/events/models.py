@@ -7,6 +7,14 @@ class Event(models.Model):
         ("archive", "Archive"),
     ]
 
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="events",
+        null=True,
+        blank=True,
+        help_text="Organisation propriétaire de cet événement (multi-tenant)"
+    )
     slug = models.SlugField(unique=True, db_index=True)
     name = models.CharField(max_length=200)
     tagline = models.CharField(max_length=300)

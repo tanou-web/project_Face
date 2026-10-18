@@ -10,6 +10,7 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 
 from apps.participants.models import Participant, FaceReference
 from apps.participants.serializers import ParticipantSerializer
+from apps.participants.utils import normalize_phone, validate_phone
 from apps.media.serializers import SingleFileUploadSerializer
 from apps.events.models import Event
 from apps.faces.utils import validate_selfie, extract_single_embedding
@@ -40,6 +41,8 @@ class ParticipantView(APIView):
         summary="Identifier ou enregistrer un participant (Login / Upsert)",
         description=(
             "Enregistre un participant ou retourne son profil s'il existe déjà grâce à son numéro WhatsApp (`phone`).\n"
+            "Le numéro est automatiquement normalisé au format E.164 (+226XXXXXXXXX).\n"
+            "Si aucun indicatif n'est fourni, +226 (Burkina Faso) est ajouté par défaut.\n"
             "Retourne l'ID unique requis pour les interactions suivantes."
         ),
         request=ParticipantSerializer,
@@ -52,13 +55,22 @@ class ParticipantView(APIView):
     def post(self, request):
         first_name = request.data.get("firstName", "").strip()
         last_name = request.data.get("lastName", "").strip()
-        phone = request.data.get("phone", "").strip()
+        phone_raw = request.data.get("phone", "").strip()
 
-        if not phone:
+        if not phone_raw:
             return Response(
                 {"error": "Le numéro de téléphone WhatsApp est obligatoire."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Normalisation et validation du numéro
+        phone_result = validate_phone(phone_raw)
+        if not phone_result["valid"]:
+            return Response(
+                {"error": phone_result["error"]},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        phone = phone_result["phone"]
 
         participant, created = Participant.objects.get_or_create(
             phone=phone,

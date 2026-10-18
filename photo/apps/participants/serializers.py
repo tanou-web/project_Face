@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from apps.participants.models import Participant
+from apps.participants.utils import normalize_phone, validate_phone
+
 
 class ParticipantSerializer(serializers.ModelSerializer):
     firstName = serializers.CharField(source="first_name")
@@ -9,3 +11,11 @@ class ParticipantSerializer(serializers.ModelSerializer):
     class Meta:
         model = Participant
         fields = ["id", "firstName", "lastName", "phone", "matchStatus"]
+
+    def validate_phone(self, value):
+        """Normalise et valide le numéro de téléphone au format E.164."""
+        result = validate_phone(value)
+        if not result["valid"]:
+            raise serializers.ValidationError(result["error"])
+        return result["phone"]
+

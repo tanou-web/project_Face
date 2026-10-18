@@ -1,7 +1,6 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAdminUser
 from rest_framework.parsers import MultiPartParser, FormParser
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
@@ -10,21 +9,36 @@ from apps.events.models import Event
 from apps.media.models import Photo
 from apps.media.serializers import SingleFileUploadSerializer
 from apps.participants.models import Participant, FaceReference, PhotoMatch
+from apps.organizations.permissions import IsOrganizationMember
 
 class AdminStatsView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsOrganizationMember]
 
     @extend_schema(
         tags=["Administration"],
-        summary="Statistiques globales",
-        description="Retourne le nombre total d'événements, photos, participants et téléchargements.",
+        summary="Statistiques globales de l'organisation",
+        description="Retourne le nombre total d'événements, photos, participants et téléchargements de l'organisation.",
         responses={200: OpenApiTypes.OBJECT}
     )
     def get(self, request):
-        events_count = Event.objects.count()
-        photos_count = Photo.objects.count()
-        participants_count = Participant.objects.count()
-        downloads_count = PhotoMatch.objects.count()
+        user = request.user
+        if user.is_superuser:
+            events_qs = Event.objects.all()
+            photos_qs = Photo.objects.all()
+            participants_count = Participant.objects.count()
+            downloads_count = PhotoMatch.objects.count()
+        else:
+            org = user.organization
+            events_qs = Event.objects.filter(organization=org)
+            photos_qs = Photo.objects.filter(event__organization=org)
+            participant_ids = PhotoMatch.objects.filter(
+                photo__event__organization=org
+            ).values_list("participant_id", flat=True).distinct()
+            participants_count = Participant.objects.filter(id__in=participant_ids).count()
+            downloads_count = PhotoMatch.objects.filter(photo__event__organization=org).count()
+
+        events_count = events_qs.count()
+        photos_count = photos_qs.count()
 
         return Response({
             "events": events_count,
@@ -34,11 +48,11 @@ class AdminStatsView(APIView):
         })
 
 class AdminContactsView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsOrganizationMember]
 
     @extend_schema(
         tags=["Administration"],
-        summary="Liste des contacts participants",
+        summary="Liste des contacts participants de l'organisation",
         description="Récupère les coordonnées des participants et indique si leur référence faciale est valide.",
         parameters=[
             OpenApiParameter(
@@ -52,14 +66,26 @@ class AdminContactsView(APIView):
         responses={200: OpenApiTypes.OBJECT}
     )
     def get(self, request):
+        user = request.user
         event_slug = request.query_params.get("event")
+
         if event_slug:
             event = get_object_or_404(Event, slug=event_slug)
+            # Vérification Multi-Tenant
+            if not user.is_superuser and hasattr(user, "organization") and event.organization != user.organization:
+                return Response({"detail": "Accès refusé pour cet événement."}, status=status.HTTP_403_FORBIDDEN)
             participant_ids = PhotoMatch.objects.filter(photo__event=event).values_list("participant_id", flat=True).distinct()
             participants = Participant.objects.filter(id__in=participant_ids).order_by("-created_at")
             event_name = event.name
         else:
-            participants = Participant.objects.all().order_by("-created_at")
+            if user.is_superuser:
+                participants = Participant.objects.all().order_by("-created_at")
+            else:
+                org = user.organization
+                participant_ids = PhotoMatch.objects.filter(
+                    photo__event__organization=org
+                ).values_list("participant_id", flat=True).distinct()
+                participants = Participant.objects.filter(id__in=participant_ids).order_by("-created_at")
             event_name = "Tous les événements"
 
         # Vérification des FaceReference existantes
@@ -83,7 +109,7 @@ class AdminContactsView(APIView):
         return Response(data)
 
 class AdminLogoUploadView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsOrganizationMember]
     parser_classes = [MultiPartParser, FormParser]
 
     @extend_schema(
@@ -95,6 +121,11 @@ class AdminLogoUploadView(APIView):
     )
     def post(self, request, slug):
         event = get_object_or_404(Event, slug=slug)
+        # Vérification Multi-Tenant
+        is_owner = hasattr(request.user, "organization") and event.organization == request.user.organization
+        if not (request.user.is_staff or is_owner):
+            return Response({"detail": "Vous n'avez pas l'autorisation de modifier cet événement."}, status=status.HTTP_403_FORBIDDEN)
+
         file_obj = request.FILES.get("file")
         if not file_obj:
             return Response({"error": "Aucun fichier fourni."}, status=status.HTTP_400_BAD_REQUEST)

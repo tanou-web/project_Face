@@ -26,10 +26,29 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f"Superutilisateur existant : {admin_user.username}")
 
-        # 2. Création de l'événement Nuit des Entrepreneurs
+        # 2. Création de l'Organisation (Multi-Tenant SaaS)
+        from apps.organizations.models import Organization
+        org, org_created = Organization.objects.get_or_create(
+            owner=admin_user,
+            defaults={
+                "name": "Faso Business Club",
+                "slug": "faso-business-club",
+                "description": "Le réseau leader des bâtisseurs d'entreprises au Burkina Faso et en Afrique de l'Ouest.",
+                "website": "https://fasobusinessclub.bf",
+                "phone": "+22670112233",
+                "is_active": True,
+            }
+        )
+        if org_created:
+            self.stdout.write(self.style.SUCCESS(f"Organisation créée : {org.name} ({org.slug})"))
+        else:
+            self.stdout.write(f"Organisation existante : {org.name}")
+
+        # 3. Création de l'événement Nuit des Entrepreneurs rattaché à l'Organisation
         event, created = Event.objects.get_or_create(
             slug="nuit-des-entrepreneurs",
             defaults={
+                "organization": org,
                 "name": "La Nuit des Entrepreneurs",
                 "tagline": "Le grand rendez-vous de l'écosystème entrepreneurial burkinabè",
                 "description": "Une soirée d'exception réunissant plus de 400 chefs d'entreprise, innovateurs et investisseurs autour de tables rondes et d'une remise de distinctions.",
@@ -50,14 +69,18 @@ class Command(BaseCommand):
                 ],
             }
         )
+        if not event.organization:
+            event.organization = org
+            event.save(update_fields=["organization"])
+
         if created:
             self.stdout.write(self.style.SUCCESS(f"Événement créé : {event.name} ({event.slug})"))
         else:
             self.stdout.write(f"Événement déjà existant : {event.name}")
 
-        # 3. Création d'un participant de démonstration
+        # 4. Création d'un participant de démonstration
         participant, p_created = Participant.objects.get_or_create(
-            phone="+226 70123456",
+            phone="+22670123456",
             defaults={
                 "first_name": "Aïcha",
                 "last_name": "Ouédraogo",

@@ -11,6 +11,7 @@ from apps.events.models import Event
 from apps.events.serializers import EventListSerializer, EventDetailSerializer, PhotoItemSerializer, EventPatchSerializer
 from apps.media.serializers import MyPhotosResponseSerializer
 from apps.participants.models import Participant, FaceReference, PhotoMatch
+from apps.participants.utils import normalize_phone
 from apps.faces.tasks import match_participant_to_event
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 def find_participant(participant_id=None, phone=None):
     """
     Recherche robuste d'un participant par son ID ou son numéro de téléphone.
-    Tolère les variantes d'encodage URL (+ transformé en espace, espaces internes, indicatifs).
+    Le numéro est normalisé au format E.164 (+226...) avant la recherche.
     """
     if participant_id:
         try:
@@ -29,36 +30,18 @@ def find_participant(participant_id=None, phone=None):
             pass
 
     if phone:
-        raw = phone.strip()
-        # 1. Correspondance exacte
-        p = Participant.objects.filter(phone=raw).first()
-        if p:
-            return p
-
-        # 2. Cas où le signe '+' a été converti en espace par l'URL decoder
-        if raw.startswith(" ") or not raw.startswith("+"):
-            fixed = "+" + raw.lstrip()
-            p = Participant.objects.filter(phone=fixed).first()
+        # Normaliser le numéro pour correspondre au format stocké en base
+        normalized = normalize_phone(phone)
+        if normalized:
+            p = Participant.objects.filter(phone=normalized).first()
             if p:
                 return p
 
-        # 3. Sans espaces
-        no_spaces = raw.replace(" ", "")
-        if not no_spaces.startswith("+"):
-            no_spaces = "+" + no_spaces
-        p = Participant.objects.filter(phone=no_spaces).first()
+        # Fallback : correspondance exacte sur la valeur brute (compatibilité anciennes données)
+        raw = phone.strip()
+        p = Participant.objects.filter(phone=raw).first()
         if p:
             return p
-
-        # 4. Correspondance par chiffres uniquement — limité aux entrées qui peuvent correspondre
-        digits = "".join(ch for ch in raw if ch.isdigit())
-        if len(digits) >= 8:
-            # Optimisation : on filtre par longueur approximative pour éviter de charger TOUS les participants
-            # Les numéros ont généralement entre 8 et 15 chiffres, on tronque à 500 candidats max
-            for candidate in Participant.objects.only("phone")[:500]:
-                cand_digits = "".join(ch for ch in candidate.phone if ch.isdigit())
-                if cand_digits == digits or cand_digits.endswith(digits) or digits.endswith(cand_digits):
-                    return Participant.objects.get(pk=candidate.pk)
 
     return None
 
@@ -102,9 +85,11 @@ class EventDetailView(APIView):
         responses={200: EventDetailSerializer}
     )
     def patch(self, request, slug):
-        if not (request.user and request.user.is_staff):
-            return Response({"detail": "Authentification admin requise."}, status=status.HTTP_403_FORBIDDEN)
         event = get_object_or_404(Event, slug=slug)
+        # Vérification Multi-Tenant : superuser/staff OU propriétaire de l'organisation
+        is_owner = hasattr(request.user, "organization") and event.organization == request.user.organization
+        if not (request.user and (request.user.is_staff or is_owner)):
+            return Response({"detail": "Vous n'avez pas l'autorisation de modifier cet événement."}, status=status.HTTP_403_FORBIDDEN)
         data = request.data
         for field in ["name", "tagline", "description", "city", "venue", "status", "accent_color", "accent_text_color", "organizer_name", "organizer_about", "organizer_website", "organizer_phone"]:
             if field in data:

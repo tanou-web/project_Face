@@ -41,8 +41,10 @@ def make_thumbnail(file_obj):
 
 from apps.media.validators import validate_uploaded_image
 
+from apps.organizations.permissions import IsOrganizationMember
+
 class AdminMediaUploadView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsOrganizationMember]
     parser_classes = [MultiPartParser, FormParser]
     throttle_scope = 'admin_media'
 
@@ -62,6 +64,10 @@ class AdminMediaUploadView(APIView):
     )
     def post(self, request, slug):
         event = get_object_or_404(Event, slug=slug)
+        # Vérification Multi-Tenant : superuser/staff OU propriétaire de l'organisation
+        is_owner = hasattr(request.user, "organization") and event.organization == request.user.organization
+        if not (request.user.is_staff or is_owner):
+            return Response({"detail": "Vous n'avez pas l'autorisation d'ajouter des photos à cet événement."}, status=status.HTTP_403_FORBIDDEN)
         files = request.FILES.getlist("files")
         if not files:
             single_file = request.FILES.get("file")
@@ -120,7 +126,7 @@ class AdminMediaUploadView(APIView):
         return Response({"received": processed_count}, status=status.HTTP_201_CREATED)
 
 class AdminMediaDeleteView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsOrganizationMember]
 
     @extend_schema(
         tags=["Administration"],
@@ -130,6 +136,10 @@ class AdminMediaDeleteView(APIView):
     )
     def delete(self, request, pk):
         photo = get_object_or_404(Photo, pk=pk)
+        # Vérification Multi-Tenant
+        is_owner = hasattr(request.user, "organization") and photo.event.organization == request.user.organization
+        if not (request.user.is_staff or is_owner):
+            return Response({"detail": "Vous n'avez pas l'autorisation de supprimer cette photo."}, status=status.HTTP_403_FORBIDDEN)
         if photo.file:
             photo.file.delete(save=False)
         if photo.thumbnail:
