@@ -64,9 +64,10 @@ class AdminMediaUploadView(APIView):
     )
     def post(self, request, slug):
         event = get_object_or_404(Event, slug=slug)
-        # Vérification Multi-Tenant : superuser/staff OU propriétaire de l'organisation
-        is_owner = hasattr(request.user, "organization") and event.organization == request.user.organization
-        if not (request.user.is_staff or is_owner):
+        from apps.organizations.permissions import get_user_organization
+        user_org = get_user_organization(request.user)
+        # Vérification Multi-Tenant : superuser OU tout membre actif de l'organisation (owner, manager, photographer)
+        if not (request.user.is_superuser or (event.organization and event.organization == user_org)):
             return Response({"detail": "Vous n'avez pas l'autorisation d'ajouter des photos à cet événement."}, status=status.HTTP_403_FORBIDDEN)
         files = request.FILES.getlist("files")
         if not files:

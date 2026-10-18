@@ -49,15 +49,28 @@ from django.db.models import Count, Q
 
 @extend_schema(
     tags=["Événements"],
-    summary="Lister tous les événements publics",
-    description="Retourne la liste des événements ordonnés par date décroissante (optimisé SQL sans N+1)."
+    summary="Lister les événements publics",
+    description="Retourne la liste des événements publics en ligne. Peut être filtré par organisation via `?org=<slug_organisation>` pour afficher la page dédiée d'un organisateur.",
+    parameters=[
+        OpenApiParameter(
+            name="org",
+            type=OpenApiTypes.STR,
+            location=OpenApiParameter.QUERY,
+            required=False,
+            description="Slug de l'organisation pour n'afficher que ses événements publics (ex: 'faso-business-club')"
+        )
+    ]
 )
 class EventListView(generics.ListAPIView):
     serializer_class = EventListSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):
-        return Event.objects.annotate(
+        qs = Event.objects.filter(status="en_ligne")
+        org_slug = self.request.query_params.get("org")
+        if org_slug:
+            qs = qs.filter(organization__slug=org_slug)
+        return qs.annotate(
             annotated_photos_count=Count('photos', filter=Q(photos__is_public=True)),
             annotated_participants_count=Count('photos__matched_participants', distinct=True)
         ).order_by("-date")
@@ -86,12 +99,14 @@ class EventDetailView(APIView):
     )
     def patch(self, request, slug):
         event = get_object_or_404(Event, slug=slug)
-        # Vérification Multi-Tenant : superuser/staff OU propriétaire de l'organisation
-        is_owner = hasattr(request.user, "organization") and event.organization == request.user.organization
-        if not (request.user and (request.user.is_staff or is_owner)):
+        from apps.organizations.permissions import get_user_organization, get_user_role
+        user_org = get_user_organization(request.user)
+        user_role = get_user_role(request.user, user_org)
+        # Seul owner ou manager peut modifier un événement (photographer = 403)
+        if not (request.user.is_superuser or (event.organization == user_org and user_role in ["owner", "manager"])):
             return Response({"detail": "Vous n'avez pas l'autorisation de modifier cet événement."}, status=status.HTTP_403_FORBIDDEN)
         data = request.data
-        for field in ["name", "tagline", "description", "city", "venue", "status", "accent_color", "accent_text_color", "organizer_name", "organizer_about", "organizer_website", "organizer_phone"]:
+        for field in ["name", "tagline", "description", "city", "venue", "date", "status", "accent_color", "accent_text_color", "organizer_name", "organizer_about", "organizer_website", "organizer_phone"]:
             if field in data:
                 setattr(event, field, data[field])
         if "highlights" in data and isinstance(data["highlights"], list):

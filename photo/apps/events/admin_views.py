@@ -134,3 +134,66 @@ class AdminLogoUploadView(APIView):
         event.save()
         logo_url = request.build_absolute_uri(event.logo.url)
         return Response({"logoUrl": logo_url})
+
+from django.db.models import Count, Q
+from apps.events.serializers import EventListSerializer, EventCreateSerializer, EventDetailSerializer
+from apps.organizations.permissions import get_user_organization, get_user_role, IsOrganizationManagerOrOwner
+
+class AdminEventsView(APIView):
+    """
+    Gestion des événements réservée à l'organisation connectée :
+    - GET /admin/events/ : Ne renvoie QUE les événements de l'organisation connectée (isolée du public).
+    - POST /admin/events/ : Création d'un nouvel événement rattaché automatiquement à l'organisation (Réservé Owner & Manager).
+    """
+    permission_classes = [IsOrganizationMember]
+
+    @extend_schema(
+        tags=["Administration"],
+        summary="Lister les événements de l'organisation",
+        description="Ne renvoie que les événements appartenant à l'organisation de l'utilisateur connecté (aucun événement des autres clients n'apparaît).",
+        responses={200: EventListSerializer(many=True)}
+    )
+    def get(self, request):
+        user = request.user
+        if user.is_superuser:
+            qs = Event.objects.all()
+        else:
+            org = get_user_organization(user)
+            if not org:
+                return Response([])
+            qs = Event.objects.filter(organization=org)
+
+        qs = qs.annotate(
+            annotated_photos_count=Count('photos', filter=Q(photos__is_public=True)),
+            annotated_participants_count=Count('photos__matched_participants', distinct=True)
+        ).order_by("-date")
+
+        serializer = EventListSerializer(qs, many=True, context={"request": request})
+        return Response(serializer.data)
+
+    @extend_schema(
+        tags=["Administration"],
+        summary="Créer un événement pour l'organisation",
+        description="Crée un nouvel événement et l'associe automatiquement à l'organisation connectée. Seuls les rôles 'owner' et 'manager' sont autorisés ('photographer' reçoit 403 Forbidden).",
+        request=EventCreateSerializer,
+        responses={201: EventDetailSerializer, 403: OpenApiTypes.OBJECT}
+    )
+    def post(self, request):
+        user = request.user
+        org = get_user_organization(user)
+        role = get_user_role(user, org)
+
+        # Vérification stricte des rôles : le photographe ne peut pas créer d'événement
+        if not (user.is_superuser or role in ["owner", "manager"]):
+            return Response(
+                {"detail": "Accès refusé : seuls les gestionnaires et propriétaires peuvent créer un événement."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = EventCreateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        event = serializer.save(organization=org)
+
+        response_serializer = EventDetailSerializer(event, context={"request": request})
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+

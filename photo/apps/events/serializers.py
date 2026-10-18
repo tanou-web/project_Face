@@ -148,6 +148,7 @@ class EventPatchSerializer(serializers.Serializer):
     description = serializers.CharField(required=False)
     city = serializers.CharField(required=False)
     venue = serializers.CharField(required=False)
+    date = serializers.DateField(required=False, help_text="Date de l'événement (YYYY-MM-DD)")
     status = serializers.ChoiceField(choices=["en_ligne", "traitement", "archive"], required=False)
     accent_color = serializers.CharField(required=False)
     accent_text_color = serializers.CharField(required=False)
@@ -156,3 +157,25 @@ class EventPatchSerializer(serializers.Serializer):
     organizer_website = serializers.URLField(required=False)
     organizer_phone = serializers.CharField(required=False)
     highlights = serializers.ListField(child=serializers.CharField(), required=False)
+
+class EventCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Event
+        fields = [
+            "name", "slug", "tagline", "description", "city", "venue",
+            "date", "status", "accent_color", "accent_text_color",
+            "organizer_name", "organizer_about", "organizer_website",
+            "organizer_phone", "highlights"
+        ]
+        extra_kwargs = {
+            "slug": {"required": False},
+            "tagline": {"required": False, "default": ""},
+            "description": {"required": False, "default": ""},
+            "venue": {"required": False, "default": ""},
+            "status": {"required": False, "default": "traitement"},
+            "accent_color": {"required": False, "default": "oklch(0.578 0.221 27.5)"},
+            "accent_text_color": {"required": False, "default": "oklch(0.99 0 0)"},
+            "organizer_name": {"required": False, "default": ""},
+            "highlights": {"required": False, "default": list},
+        }
+

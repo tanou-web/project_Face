@@ -21,6 +21,14 @@ from apps.events.admin_views import (
     AdminStatsView,
     AdminContactsView,
     AdminLogoUploadView,
+    AdminEventsView,
+)
+from apps.organizations.views import (
+    AuthMeView,
+    AdminCreateClientAccountView,
+    SetPasswordFromTokenView,
+    TeamMembersView,
+    CreateTeamInvitationView,
 )
 from apps.participants.views import (
     ParticipantView,
@@ -50,9 +58,16 @@ class CustomTokenRefreshView(TokenRefreshView):
     pass
 
 api_patterns = [
-    # Auth JWT
+    # Auth JWT & Profil SaaS
     path("auth/login/", LoginView.as_view(), name="token_obtain_pair"),
     path("auth/refresh/", CustomTokenRefreshView.as_view(), name="token_refresh"),
+    path("auth/me/", AuthMeView.as_view(), name="auth-me"),
+    path("auth/set-password/", SetPasswordFromTokenView.as_view(), name="auth-set-password"),
+
+    # SaaS Équipe & Clients (Option B)
+    path("admin/clients/create/", AdminCreateClientAccountView.as_view(), name="admin-client-create"),
+    path("admin/team/", TeamMembersView.as_view(), name="admin-team-list"),
+    path("admin/team/invite/", CreateTeamInvitationView.as_view(), name="admin-team-invite"),
 
     # Public Events
     path("events/", EventListView.as_view(), name="event-list"),
@@ -65,7 +80,8 @@ api_patterns = [
     path("participants/<int:pk>/face-reference/", FaceReferenceView.as_view(), name="face-reference"),
     path("participants/<int:pk>/", ParticipantDeleteView.as_view(), name="participant-delete"),
 
-    # Admin endpoints
+    # Admin Dashboard & Media
+    path("admin/events/", AdminEventsView.as_view(), name="admin-events"),
     path("admin/stats/", AdminStatsView.as_view(), name="admin-stats"),
     path("admin/contacts/", AdminContactsView.as_view(), name="admin-contacts"),
     path("admin/events/<slug:slug>/media/", AdminMediaUploadView.as_view(), name="admin-media-upload"),
