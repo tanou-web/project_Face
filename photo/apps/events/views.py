@@ -1,3 +1,14 @@
+"""
+Vues publiques et opérationnelles pour le catalogue d'événements et la recherche de photos.
+
+Ce module implémente :
+1. `find_participant` : Recherche tolérante de profil par ID numérique ou numéro de téléphone normalisé.
+2. `EventListView` : Catalogue public des événements en ligne (filtrable par studio via `?org=slug`).
+3. `EventDetailView` : Fiche détaillée de l'événement et modification (PATCH) par l'organisateur.
+4. `EventPhotosView` : Galerie complète des photos publiques de l'événement.
+5. `MyPhotosView` : Récupération des photos personnelles d'un participant identifié par IA.
+"""
+
 import logging
 from rest_framework import generics, status
 from rest_framework.views import APIView
@@ -5,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import AllowAny, IsAdminUser
 from django.shortcuts import get_object_or_404
+from django.db.models import Count, Q
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 
 from apps.events.models import Event
@@ -16,10 +28,15 @@ from apps.faces.tasks import match_participant_to_event
 
 logger = logging.getLogger(__name__)
 
+
 def find_participant(participant_id=None, phone=None):
     """
-    Recherche robuste d'un participant par son ID ou son numéro de téléphone.
-    Le numéro est normalisé au format E.164 (+226...) avant la recherche.
+    Recherche tolérante d'un participant par son identifiant numérique ou son numéro de téléphone.
+
+    Pourquoi cette double recherche :
+    Si l'utilisateur change d'appareil, vide le cache de son navigateur mobile ou ouvre le lien
+    depuis un SMS/WhatsApp, son 'participant_id' local peut être perdu. Le numéro de téléphone
+    (normalisé au format international E.164 ex: '+22670123456') sert d'ancrage permanent.
     """
     if participant_id:
         try:
@@ -30,14 +47,14 @@ def find_participant(participant_id=None, phone=None):
             pass
 
     if phone:
-        # Normaliser le numéro pour correspondre au format stocké en base
+        # 1. Tentative avec numéro normalisé E.164 (+226...)
         normalized = normalize_phone(phone)
         if normalized:
             p = Participant.objects.filter(phone=normalized).first()
             if p:
                 return p
 
-        # Fallback : correspondance exacte sur la valeur brute (compatibilité anciennes données)
+        # 2. Fallback de compatibilité : comparaison sur la valeur brute non nettoyée
         raw = phone.strip()
         p = Participant.objects.filter(phone=raw).first()
         if p:
@@ -45,7 +62,6 @@ def find_participant(participant_id=None, phone=None):
 
     return None
 
-from django.db.models import Count, Q
 
 @extend_schema(
     tags=["Événements"],
@@ -62,6 +78,11 @@ from django.db.models import Count, Q
     ]
 )
 class EventListView(generics.ListAPIView):
+    """
+    Catalogue des événements accessibles au grand public.
+    Seuls les événements avec le statut 'en_ligne' sont retournés.
+    Le paramètre query `?org=<slug>` permet à une agence d'afficher sa propre vitrine blanche.
+    """
     serializer_class = EventListSerializer
     permission_classes = [AllowAny]
 
@@ -70,12 +91,19 @@ class EventListView(generics.ListAPIView):
         org_slug = self.request.query_params.get("org")
         if org_slug:
             qs = qs.filter(organization__slug=org_slug)
+        # Pré-agrégation pour optimiser les performances de la page d'accueil
         return qs.annotate(
             annotated_photos_count=Count('photos', filter=Q(photos__is_public=True)),
             annotated_participants_count=Count('photos__matched_participants', distinct=True)
         ).order_by("-date")
 
+
 class EventDetailView(APIView):
+    """
+    Fiche détaillée d'un événement :
+    - GET : Accessible à tous pour consulter la description et la galerie de photos publiques.
+    - PATCH : Réservé à l'organisateur propriétaire pour éditer la date, le lieu ou le statut.
+    """
     permission_classes = [AllowAny]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
@@ -93,20 +121,33 @@ class EventDetailView(APIView):
     @extend_schema(
         tags=["Administration"],
         summary="Mise à jour partielle d'un événement",
-        description="Permet à l'organisateur / admin de modifier les informations d'un événement.",
+        description="Permet à l'organisateur / admin de modifier les informations d'un événement (date, nom, thème, statut).",
         request=EventPatchSerializer,
         responses={200: EventDetailSerializer}
     )
     def patch(self, request, slug):
+        """
+        Mise à jour partielle des attributs d'un événement.
+        Contrôle que l'utilisateur connecté appartient bien à l'organisation hôte
+        et détient le rôle 'owner' ou 'manager' ('photographer' reçoit 403 Forbidden).
+        """
         event = get_object_or_404(Event, slug=slug)
         from apps.organizations.permissions import get_user_organization, get_user_role
         user_org = get_user_organization(request.user)
         user_role = get_user_role(request.user, user_org)
-        # Seul owner ou manager peut modifier un événement (photographer = 403)
+        
+        # Vérification stricte des autorisations multi-tenant
         if not (request.user.is_superuser or (event.organization == user_org and user_role in ["owner", "manager"])):
-            return Response({"detail": "Vous n'avez pas l'autorisation de modifier cet événement."}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {"detail": "Vous n'avez pas l'autorisation de modifier cet événement."},
+                status=status.HTTP_403_FORBIDDEN
+            )
         data = request.data
-        for field in ["name", "tagline", "description", "city", "venue", "date", "status", "accent_color", "accent_text_color", "organizer_name", "organizer_about", "organizer_website", "organizer_phone"]:
+        for field in [
+            "name", "tagline", "description", "city", "venue",
+            "date", "status", "accent_color", "accent_text_color",
+            "organizer_name", "organizer_about", "organizer_website", "organizer_phone"
+        ]:
             if field in data:
                 setattr(event, field, data[field])
         if "highlights" in data and isinstance(data["highlights"], list):
@@ -115,7 +156,12 @@ class EventDetailView(APIView):
         serializer = EventDetailSerializer(event, context={"request": request})
         return Response(serializer.data)
 
+
 class EventPhotosView(APIView):
+    """
+    Galerie de photos publiques d'un événement spécifique.
+    Retourne la liste des photos approuvées pour affichage grand public.
+    """
     permission_classes = [AllowAny]
 
     @extend_schema(
@@ -130,7 +176,16 @@ class EventPhotosView(APIView):
         serializer = PhotoItemSerializer(photos, many=True, context={"request": request})
         return Response(serializer.data)
 
+
 class MyPhotosView(APIView):
+    """
+    Endpoint de récupération des photos personnelles d'un participant (Reconnaissance Faciale).
+
+    Machine à états du participant :
+    - 'no_reference' : Le participant n'a pas encore fourni de selfie de référence.
+    - 'pending' : Selfie reçu, matching IA en cours ou déclenché à la volée.
+    - 'ready' : Traitement terminé, retourne uniquement les photos où le visage du participant apparaît.
+    """
     permission_classes = [AllowAny]
 
     @extend_schema(
@@ -168,14 +223,15 @@ class MyPhotosView(APIView):
         if not participant:
             return Response({"status": "no_reference", "photos": []})
 
+        # 1. Vérifie si le participant doit d'abord soumettre son selfie
         if participant.match_status == "no_reference":
-            # Auto-récupération si une FaceReference a été injectée
             if FaceReference.objects.filter(participant=participant).exists():
                 participant.match_status = "pending"
                 participant.save()
             else:
                 return Response({"status": "no_reference", "photos": []})
 
+        # 2. Si le matching est en attente, tente une réconciliation immédiate
         if participant.match_status == "pending":
             if FaceReference.objects.filter(participant=participant).exists():
                 try:
@@ -186,7 +242,7 @@ class MyPhotosView(APIView):
             if participant.match_status == "pending":
                 return Response({"status": "pending", "photos": []})
 
-        # Statut ready : renvoyer les photos matchées
+        # 3. Statut 'ready' : renvoie la sélection des photos reconnues
         matches = PhotoMatch.objects.filter(
             participant=participant,
             photo__event=event,

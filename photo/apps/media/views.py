@@ -1,3 +1,13 @@
+"""
+Vues opérationnelles pour l'upload, le traitement et la suppression des médias d'événements.
+
+Ce module orchestre le pipeline complet d'ingestion de photos :
+1. `make_thumbnail` : Génération de miniatures avec redressement automatique de l'orientation EXIF.
+2. `AdminMediaUploadView` : Réception de lots de photos, validation de sécurité, extraction biométrique
+   et déclenchement de la réconciliation asynchrone Celery avec les participants.
+3. `AdminMediaDeleteView` : Suppression étanche d'une photo et nettoyage effectif des fichiers sur disque.
+"""
+
 import os
 import logging
 from io import BytesIO
@@ -14,21 +24,34 @@ from drf_spectacular.utils import extend_schema, OpenApiTypes
 from apps.events.models import Event
 from apps.media.models import Photo, FaceIndex
 from apps.media.serializers import MultiFileUploadSerializer
+from apps.media.validators import validate_uploaded_image
 from apps.participants.models import Participant
 from apps.faces.utils import extract_embeddings
 from apps.faces.tasks import match_participant_to_event
+from apps.organizations.permissions import IsOrganizationMember, get_user_organization
 
 logger = logging.getLogger(__name__)
 
+
 def make_thumbnail(file_obj):
-    """Génère une miniature carrée/redimensionnée max 400x400 avec correction d'orientation EXIF via Pillow"""
+    """
+    Génère une miniature allégée (max 400x400) au format JPEG.
+
+    Traitement critique d'orientation :
+    Les smartphones et reflex modernes enregistrent l'orientation de prise de vue
+    dans les métadonnées EXIF (orientation 3, 6 ou 8). Si l'image n'est pas redressée
+    via `ImageOps.exif_transpose`, la photo apparaît tournée de 90° ou 180° dans le navigateur.
+    La conversion en mode 'RGB' évite toute exception lors de l'enregistrement en JPEG
+    si la photo originale contient un canal alpha transparent (RGBA/PNG).
+    """
     try:
         file_obj.seek(0)
         img = Image.open(file_obj)
-        # Corriger automatiquement la rotation de l'appareil photo/smartphone via EXIF
+        # Redressement automatique selon les métadonnées de rotation du capteur photo
         img = ImageOps.exif_transpose(img)
         if img.mode in ("RGBA", "P"):
             img = img.convert("RGB")
+        # Rééchantillonnage de haute fidélité LANCZOS pour préserver le piqué des visages
         img.thumbnail((400, 400), Image.Resampling.LANCZOS)
         thumb_io = BytesIO()
         img.save(thumb_io, format="JPEG", quality=85)
@@ -39,11 +62,13 @@ def make_thumbnail(file_obj):
         logger.error(f"Erreur lors de la génération de la miniature: {e}")
         return None
 
-from apps.media.validators import validate_uploaded_image
-
-from apps.organizations.permissions import IsOrganizationMember
 
 class AdminMediaUploadView(APIView):
+    """
+    Point d'entrée principal pour l'envoi de photos de reportage par les photographes.
+    Accepte soit un champ unique 'file', soit un envoi multiple 'files'.
+    Gère la chaîne complète : Sécurité -> Miniature -> Sauvegarde -> IA faciale -> Celery.
+    """
     permission_classes = [IsOrganizationMember]
     parser_classes = [MultiPartParser, FormParser]
     throttle_scope = 'admin_media'
@@ -64,11 +89,17 @@ class AdminMediaUploadView(APIView):
     )
     def post(self, request, slug):
         event = get_object_or_404(Event, slug=slug)
-        from apps.organizations.permissions import get_user_organization
         user_org = get_user_organization(request.user)
-        # Vérification Multi-Tenant : superuser OU tout membre actif de l'organisation (owner, manager, photographer)
+
+        # Contrôle multi-tenant : L'utilisateur doit appartenir à l'organisation de l'événement
+        # (les rôles owner, manager et photographer sont tous autorisés à uploader des médias)
         if not (request.user.is_superuser or (event.organization and event.organization == user_org)):
-            return Response({"detail": "Vous n'avez pas l'autorisation d'ajouter des photos à cet événement."}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {"detail": "Vous n'avez pas l'autorisation d'ajouter des photos à cet événement."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Récupération tolérante des fichiers envoyés sous le nom 'files' ou 'file'
         files = request.FILES.getlist("files")
         if not files:
             single_file = request.FILES.get("file")
@@ -81,14 +112,14 @@ class AdminMediaUploadView(APIView):
         processed_count = 0
         for uploaded_file in files:
             try:
-                # 0. Validation de sécurité du fichier
+                # 0. Validation stricte de sécurité (taille, extension, type MIME, intégrité Pillow)
                 validate_uploaded_image(uploaded_file, max_mb=25)
 
-                # 1. Génération de la miniature avec correction EXIF
+                # 1. Génération de la miniature avec redressement EXIF
                 thumb_content = make_thumbnail(uploaded_file)
                 uploaded_file.seek(0)
 
-                # 2. Sauvegarde de la Photo
+                # 2. Sauvegarde de la Photo rattachée à l'événement
                 photo = Photo(
                     event=event,
                     file=uploaded_file,
@@ -98,7 +129,7 @@ class AdminMediaUploadView(APIView):
                     photo.thumbnail = thumb_content
                 photo.save()
 
-                # 3. Détection et extraction des visages
+                # 3. Détection et extraction des visages par IA
                 try:
                     if photo.file and os.path.exists(photo.file.path):
                         face_results = extract_embeddings(photo.file.path)
@@ -115,18 +146,26 @@ class AdminMediaUploadView(APIView):
             except Exception as e:
                 logger.error(f"Erreur lors du traitement du fichier {uploaded_file.name}: {e}")
 
-        # 4. Actualiser le matching pour les participants déjà enregistrés avec selfie
+        # 4. Actualisation asynchrone du matching pour les participants déjà enregistrés
+        # Si de nouvelles photos viennent d'arriver, Celery recalcule les correspondances en tâche de fond.
         if processed_count > 0:
             existing_participants = Participant.objects.filter(face_reference__isnull=False)
             for p in existing_participants:
                 try:
+                    # Envoi au worker Celery Redis en tâche de fond
                     match_participant_to_event.delay(p.id, event.slug)
                 except Exception:
+                    # Fallback synchrone direct si le broker Celery n'est pas actif localement
                     match_participant_to_event(p.id, event.slug)
 
         return Response({"received": processed_count}, status=status.HTTP_201_CREATED)
 
+
 class AdminMediaDeleteView(APIView):
+    """
+    Suppression définitive d'une photo et de ses indexations faciales.
+    Nettoie également les fichiers physiques stockés sur le disque dur du serveur.
+    """
     permission_classes = [IsOrganizationMember]
 
     @extend_schema(
@@ -137,13 +176,19 @@ class AdminMediaDeleteView(APIView):
     )
     def delete(self, request, pk):
         photo = get_object_or_404(Photo, pk=pk)
-        # Vérification Multi-Tenant
+        # Vérification Multi-Tenant : seuls les membres de l'organisation hôte peuvent supprimer
         is_owner = hasattr(request.user, "organization") and photo.event.organization == request.user.organization
         if not (request.user.is_staff or is_owner):
-            return Response({"detail": "Vous n'avez pas l'autorisation de supprimer cette photo."}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {"detail": "Vous n'avez pas l'autorisation de supprimer cette photo."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Suppression des fichiers physiques sur le disque pour libérer l'espace de stockage
         if photo.file:
             photo.file.delete(save=False)
         if photo.thumbnail:
             photo.thumbnail.delete(save=False)
+        # Suppression en base (entraîne en cascade la suppression des FaceIndex et PhotoMatch)
         photo.delete()
         return Response({"message": "Photo supprimée avec succès."}, status=status.HTTP_200_OK)

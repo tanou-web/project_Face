@@ -1,3 +1,17 @@
+"""
+Commande de gestion Django pour l'initialisation des données de démonstration (seed_data).
+
+Pourquoi cette commande est essentielle :
+Exécutée automatiquement à chaque build dans `build.sh` (Render et CI/CD), elle garantit
+qu'une base de données fraîchement déployée dispose immédiatement :
+1. D'un compte superadministrateur fonctionnel (`admin@clovis-dev.bf`) pour tester la connexion JWT.
+2. D'une organisation SaaS multi-tenant modèle (`Faso Business Club`).
+3. D'un événement vitrine complet en ligne (`La Nuit des Entrepreneurs`) avec description et thèmes graphiques.
+4. D'un participant de test avec numéro Burkinabè (+22670123456).
+
+Toutes les opérations utilisent `get_or_create` pour être strictement idempotentes (aucun doublon lors des redéploiements).
+"""
+
 from django.core.management.base import BaseCommand
 from django.contrib.auth import get_user_model
 from apps.events.models import Event
@@ -6,11 +20,14 @@ import datetime
 
 User = get_user_model()
 
+
 class Command(BaseCommand):
     help = "Initialise des données de test (Événement La Nuit des Entrepreneurs, Admin, Participant)"
 
     def handle(self, *args, **options):
-        # 1. Création du superutilisateur admin si nécessaire
+        # ----------------------------------------------------------------------
+        # 1. Création idempotente du superadministrateur système
+        # ----------------------------------------------------------------------
         admin_email = "admin@clovis-dev.bf"
         admin_user = User.objects.filter(email=admin_email).first()
         if not admin_user:
@@ -26,7 +43,9 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f"Superutilisateur existant : {admin_user.username}")
 
-        # 2. Création de l'Organisation (Multi-Tenant SaaS)
+        # ----------------------------------------------------------------------
+        # 2. Création de l'Organisation modèle (Multi-Tenant SaaS)
+        # ----------------------------------------------------------------------
         from apps.organizations.models import Organization
         org, org_created = Organization.objects.get_or_create(
             owner=admin_user,
@@ -44,7 +63,9 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f"Organisation existante : {org.name}")
 
-        # 3. Création de l'événement Nuit des Entrepreneurs rattaché à l'Organisation
+        # ----------------------------------------------------------------------
+        # 3. Création de l'événement vitrine rattaché à l'Organisation
+        # ----------------------------------------------------------------------
         event, created = Event.objects.get_or_create(
             slug="nuit-des-entrepreneurs",
             defaults={
@@ -69,6 +90,7 @@ class Command(BaseCommand):
                 ],
             }
         )
+        # Garantit le rattachement multi-tenant même si l'événement existait avant la migration
         if not event.organization:
             event.organization = org
             event.save(update_fields=["organization"])
@@ -78,7 +100,9 @@ class Command(BaseCommand):
         else:
             self.stdout.write(f"Événement déjà existant : {event.name}")
 
-        # 4. Création d'un participant de démonstration
+        # ----------------------------------------------------------------------
+        # 4. Création d'un participant de démonstration (Workflow reconnaissance)
+        # ----------------------------------------------------------------------
         participant, p_created = Participant.objects.get_or_create(
             phone="+22670123456",
             defaults={
