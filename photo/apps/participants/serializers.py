@@ -18,10 +18,11 @@ class ParticipantSerializer(serializers.ModelSerializer):
     firstName = serializers.CharField(source="first_name", help_text="Prénom de l'usager")
     lastName = serializers.CharField(source="last_name", help_text="Nom de famille de l'usager")
     matchStatus = serializers.CharField(source="match_status", read_only=True, help_text="Statut d'avancement du matching")
+    accessToken = serializers.CharField(source="access_token", read_only=True, help_text="Jeton de session secret pour accès aux photos et gestion RGPD")
 
     class Meta:
         model = Participant
-        fields = ["id", "firstName", "lastName", "phone", "matchStatus"]
+        fields = ["id", "firstName", "lastName", "phone", "matchStatus", "accessToken"]
 
     def validate_phone(self, value):
         """

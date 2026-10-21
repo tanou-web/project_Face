@@ -29,36 +29,50 @@ from apps.faces.tasks import match_participant_to_event
 logger = logging.getLogger(__name__)
 
 
-def find_participant(participant_id=None, phone=None):
-    """
-    Recherche tolérante d'un participant par son identifiant numérique ou son numéro de téléphone.
+import secrets
 
-    Pourquoi cette double recherche :
-    Si l'utilisateur change d'appareil, vide le cache de son navigateur mobile ou ouvre le lien
-    depuis un SMS/WhatsApp, son 'participant_id' local peut être perdu. Le numéro de téléphone
-    (normalisé au format international E.164 ex: '+22670123456') sert d'ancrage permanent.
+def find_participant_for_photos(request):
     """
-    if participant_id:
+    Identifie de manière sécurisée le participant pour l'accès à ses photos personnelles.
+
+    Règles de sécurité :
+    1. Aucun accès n'est autorisé par simple numéro de téléphone (protection de la vie privée).
+       Le numéro de téléphone est exclusivement utilisé pour la gestion des contacts (WhatsApp).
+    2. L'accès aux photos personnelles requiert le jeton d'accès secret `access_token`
+       (transmis via l'en-tête HTTP 'X-Participant-Token' ou le paramètre '?token=').
+    3. Si seul un identifiant numérique `?participant={id}` est fourni :
+       - Autorisé pour les administrateurs connectés (is_staff).
+       - Pour un invité classique, le jeton secret correspondant doit impérativement être fourni.
+    """
+    token = (
+        request.headers.get("X-Participant-Token")
+        or request.query_params.get("token")
+    )
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+
+    participant_id = request.query_params.get("participant")
+
+    # 1. Identification par jeton secret (recommandé et hautement sécurisé)
+    if token:
+        participant = Participant.objects.filter(access_token=token).first()
+        if participant:
+            if participant_id:
+                try:
+                    if int(participant_id) != participant.id:
+                        return None
+                except (ValueError, TypeError):
+                    return None
+            return participant
+
+    # 2. Consultation par ID (exclusivement pour les administrateurs connectés)
+    if participant_id and request.user and request.user.is_authenticated and request.user.is_staff:
         try:
-            p = Participant.objects.filter(pk=int(participant_id)).first()
-            if p:
-                return p
+            return Participant.objects.filter(pk=int(participant_id)).first()
         except (ValueError, TypeError):
             pass
-
-    if phone:
-        # 1. Tentative avec numéro normalisé E.164 (+226...)
-        normalized = normalize_phone(phone)
-        if normalized:
-            p = Participant.objects.filter(phone=normalized).first()
-            if p:
-                return p
-
-        # 2. Fallback de compatibilité : comparaison sur la valeur brute non nettoyée
-        raw = phone.strip()
-        p = Participant.objects.filter(phone=raw).first()
-        if p:
-            return p
 
     return None
 
@@ -192,34 +206,40 @@ class MyPhotosView(APIView):
         tags=["Participants"],
         summary="Photos matchées du participant",
         description=(
-            "Retourne les photos reconnues pour un participant donné sur un événement.\n"
-            "Prend en charge `?participant={id}` ou `?phone={numéro WhatsApp}` pour garantir "
-            "le bon fonctionnement même lorsque le frontend n'a pas encore persisté l'identifiant."
+            "Retourne les photos reconnues par reconnaissance faciale pour un participant sur un événement.\n"
+            "Sécurité : L'accès nécessite le jeton secret `access_token` du participant "
+            "(reçu lors du scan / enregistrement), transmis via le header `X-Participant-Token` "
+            "ou le paramètre `?token=`.\n"
+            "Aucune consultation par numéro de téléphone n'est autorisée (numéro réservé au contact WhatsApp organisateur)."
         ),
         parameters=[
+            OpenApiParameter(
+                name="token",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.QUERY,
+                required=False,
+                description="Jeton secret access_token du participant (reçu lors du POST /participants/)"
+            ),
+            OpenApiParameter(
+                name="X-Participant-Token",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.HEADER,
+                required=False,
+                description="Jeton secret access_token du participant"
+            ),
             OpenApiParameter(
                 name="participant",
                 type=OpenApiTypes.INT,
                 location=OpenApiParameter.QUERY,
                 required=False,
-                description="ID unique du participant retourné lors du POST /participants/"
-            ),
-            OpenApiParameter(
-                name="phone",
-                type=OpenApiTypes.STR,
-                location=OpenApiParameter.QUERY,
-                required=False,
-                description="Numéro WhatsApp du participant (ex: '+226 70123456')"
+                description="ID du participant (réservé aux administrateurs ou accompagné du token)"
             ),
         ],
         responses={200: MyPhotosResponseSerializer}
     )
     def get(self, request, slug):
         event = get_object_or_404(Event, slug=slug)
-        participant_id = request.query_params.get("participant")
-        phone = request.query_params.get("phone")
-
-        participant = find_participant(participant_id, phone)
+        participant = find_participant_for_photos(request)
         if not participant:
             return Response({"status": "no_reference", "photos": []})
 
@@ -246,7 +266,6 @@ class MyPhotosView(APIView):
         matches = PhotoMatch.objects.filter(
             participant=participant,
             photo__event=event,
-            photo__is_public=True,
         ).select_related("photo").order_by("-photo__created_at")
 
         photos = [

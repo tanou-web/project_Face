@@ -126,3 +126,40 @@ class EventsAPITestCase(TestCase):
             res = self.client.get("/events/")
             self.assertEqual(res.status_code, 200)
             self.assertEqual(len(res.json()), 4)
+
+    def test_photo_patch_is_public_and_legend(self):
+        self.client.force_authenticate(user=self.admin_user)
+        res = self.client.patch(f"/admin/media/{self.photo.id}/", {
+            "isPublic": False,
+            "legend": "Photo privée VIP"
+        }, format="json")
+        self.assertEqual(res.status_code, 200)
+        self.photo.refresh_from_db()
+        self.assertFalse(self.photo.is_public)
+        self.assertEqual(self.photo.legend, "Photo privée VIP")
+
+    def test_manager_can_only_invite_photographer(self):
+        from apps.organizations.models import Organization, OrganizationMembership
+        owner_user = User.objects.create_user(username="owner1", password="password123")
+        org = Organization.objects.create(name="Studio Test", slug="studio-test", owner=owner_user)
+        manager_user = User.objects.create_user(username="manager1", password="password123")
+        OrganizationMembership.objects.create(organization=org, user=manager_user, role="manager")
+
+        self.client.force_authenticate(user=manager_user)
+
+        # 1. Manager tente d'inviter un manager -> 403 Forbidden
+        res_fail = self.client.post("/admin/team/invite/", {
+            "role": "manager",
+            "phone": "+22670112233"
+        }, format="json")
+        self.assertEqual(res_fail.status_code, 403)
+        self.assertIn("ne pouvez inviter que des photographes", res_fail.json().get("error", ""))
+
+        # 2. Manager invite un photographe -> 201 Created
+        res_ok = self.client.post("/admin/team/invite/", {
+            "role": "photographer",
+            "phone": "+22670112233"
+        }, format="json")
+        self.assertEqual(res_ok.status_code, 201)
+        self.assertEqual(res_ok.json()["role"], "photographer")
+

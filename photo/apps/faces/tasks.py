@@ -23,10 +23,9 @@ def match_participant_to_event(participant_id: int, event_slug: str):
 
     ref_embedding = np.array(ref.embedding, dtype=np.float32)
 
-    # Récupère tous les FaceIndex des photos publiques de cet événement (une seule requête DB)
+    # Récupère tous les FaceIndex de TOUTES les photos de cet événement (publiques et privées)
     face_indexes_qs = FaceIndex.objects.filter(
-        photo__event__slug=event_slug,
-        photo__is_public=True
+        photo__event__slug=event_slug
     ).values_list("photo_id", "embedding")
 
     # Matérialiser en mémoire en une seule passe (évite le double-hit DB de .exists() + itération)

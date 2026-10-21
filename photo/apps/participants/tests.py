@@ -136,20 +136,27 @@ class ParticipantAPITestCase(TestCase):
         self.assertEqual(res2.status_code, 200)  # 200 = existant, pas 201
         self.assertEqual(res2.json()["id"], pid)  # Même participant
 
-    def test_my_photos_with_phone_and_participant_id(self):
+    def test_my_photos_with_token_and_phone_denial(self):
+        """
+        Vérifie que :
+        1. Il est IMPOSSIBLE d'accéder aux photos avec un simple numéro de téléphone.
+        2. L'accès requiert le jeton secret access_token (header ou query ?token=).
+        3. Un simple ID sans token est refusé pour un visiteur non authentifié staff.
+        """
         participant = Participant.objects.create(
             first_name="Issa",
             last_name="Kaboré",
             phone="+22678001122",
             match_status="no_reference"
         )
+        self.assertIsNotNone(participant.access_token)
 
         # 1. Sans paramètre
         res = self.client.get(f"/events/{self.event.slug}/my-photos/")
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json()["status"], "no_reference")
 
-        # 2. Avec paramètre phone (format local → normalisé pour retrouver le participant)
+        # 2. Avec paramètre phone : doit être strictement ignoré / refuser l'accès aux photos
         res_phone = self.client.get(f"/events/{self.event.slug}/my-photos/?phone=78001122")
         self.assertEqual(res_phone.status_code, 200)
         self.assertEqual(res_phone.json()["status"], "no_reference")
@@ -166,11 +173,32 @@ class ParticipantAPITestCase(TestCase):
         )
         PhotoMatch.objects.create(participant=participant, photo=photo)
 
-        res_ready = self.client.get(f"/events/{self.event.slug}/my-photos/?participant={participant.id}")
-        self.assertEqual(res_ready.status_code, 200)
-        self.assertEqual(res_ready.json()["status"], "ready")
-        self.assertEqual(len(res_ready.json()["photos"]), 1)
-        self.assertEqual(res_ready.json()["photos"][0]["legend"], "Gala 1")
+        # 4. Même avec photo matchée, chercher par numéro de téléphone ne doit JAMAIS donner de photos
+        res_phone_ready = self.client.get(f"/events/{self.event.slug}/my-photos/?phone=+22678001122")
+        self.assertEqual(res_phone_ready.status_code, 200)
+        self.assertEqual(res_phone_ready.json()["status"], "no_reference")
+        self.assertEqual(len(res_phone_ready.json()["photos"]), 0)
+
+        # 5. Chercher par ID seul sans token est rejeté (anti-énumération)
+        res_id_only = self.client.get(f"/events/{self.event.slug}/my-photos/?participant={participant.id}")
+        self.assertEqual(res_id_only.status_code, 200)
+        self.assertEqual(res_id_only.json()["status"], "no_reference")
+
+        # 6. Avec le jeton secret dans l'en-tête HTTP X-Participant-Token
+        res_header = self.client.get(
+            f"/events/{self.event.slug}/my-photos/",
+            HTTP_X_PARTICIPANT_TOKEN=participant.access_token
+        )
+        self.assertEqual(res_header.status_code, 200)
+        self.assertEqual(res_header.json()["status"], "ready")
+        self.assertEqual(len(res_header.json()["photos"]), 1)
+        self.assertEqual(res_header.json()["photos"][0]["legend"], "Gala 1")
+
+        # 7. Avec le jeton secret en query param ?token=
+        res_query = self.client.get(f"/events/{self.event.slug}/my-photos/?token={participant.access_token}")
+        self.assertEqual(res_query.status_code, 200)
+        self.assertEqual(res_query.json()["status"], "ready")
+        self.assertEqual(len(res_query.json()["photos"]), 1)
 
     def test_rgpd_deletion(self):
         participant = Participant.objects.create(
@@ -184,17 +212,22 @@ class ParticipantAPITestCase(TestCase):
             embedding=[0.1] * 512
         )
 
-        # Génération du token RGPD (SHA256 du numéro de téléphone normalisé)
-        rgpd_token = hashlib.sha256(participant.phone.encode()).hexdigest()
-
-        # Vérification que sans token, la suppression est refusée (403)
+        # 1. Sans token -> refusé (403)
         res_denied = self.client.delete(f"/participants/{participant.id}/face-reference/")
         self.assertEqual(res_denied.status_code, 403)
 
-        # Suppression de l'embedding de référence avec token
+        # 2. Avec l'ancien hash SHA-256 du téléphone (ne doit plus fonctionner car prévisible) -> refusé (403)
+        legacy_hash = hashlib.sha256(participant.phone.encode()).hexdigest()
+        res_legacy = self.client.delete(
+            f"/participants/{participant.id}/face-reference/",
+            HTTP_X_PARTICIPANT_TOKEN=legacy_hash
+        )
+        self.assertEqual(res_legacy.status_code, 403)
+
+        # 3. Suppression de la référence faciale avec le vrai access_token secret
         res_del_ref = self.client.delete(
             f"/participants/{participant.id}/face-reference/",
-            HTTP_X_PARTICIPANT_TOKEN=rgpd_token
+            HTTP_X_PARTICIPANT_TOKEN=participant.access_token
         )
         self.assertEqual(res_del_ref.status_code, 200)
         self.assertFalse(FaceReference.objects.filter(participant=participant).exists())
@@ -202,10 +235,10 @@ class ParticipantAPITestCase(TestCase):
         participant.refresh_from_db()
         self.assertEqual(participant.match_status, "no_reference")
 
-        # Droit à l'oubli complet avec token
+        # 4. Droit à l'oubli complet avec le jeton secret
         res_del_all = self.client.delete(
             f"/participants/{participant.id}/",
-            HTTP_X_PARTICIPANT_TOKEN=rgpd_token
+            HTTP_X_PARTICIPANT_TOKEN=participant.access_token
         )
         self.assertEqual(res_del_all.status_code, 200)
         self.assertFalse(Participant.objects.filter(id=participant.id).exists())

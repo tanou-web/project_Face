@@ -40,7 +40,7 @@ ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '*').split(',')
 
 # URL de base de l'application Web Frontend (React, Vue, Next.js, etc.)
 # Utilisée pour générer les liens d'invitation et d'activation WhatsApp/SMS.
-# En production sur Render, définissez la variable d'environnement FRONTEND_URL.
+# ⚠️  Sur Render : définissez la variable d'environnement FRONTEND_URL=https://platforme-photo-scan.onrender.com
 FRONTEND_URL = os.environ.get('FRONTEND_URL', '').rstrip('/')
 
 # ==============================================================================
@@ -200,12 +200,15 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 1000             # Nombre de champs form-data ac
 CORS_ALLOW_ALL_ORIGINS = os.environ.get('CORS_ALLOW_ALL_ORIGINS', 'True').lower() in ('true', '1', 'yes')
 _extra_origins = [o.strip() for o in os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',') if o.strip()]
 CORS_ALLOWED_ORIGINS = list(set([
+    # Développement local (Vite)
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:5175",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5174",
     "http://127.0.0.1:5175",
+    # Production Frontend (Render)
+    "https://platforme-photo-scan.onrender.com",
 ] + _extra_origins))
 CORS_ALLOW_CREDENTIALS = True  # Permet l'envoi de cookies et d'en-têtes d'autorisation sécurisés
 CORS_ALLOW_HEADERS = [
@@ -218,6 +221,7 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+    'x-participant-token',
 ]
 
 # ==============================================================================

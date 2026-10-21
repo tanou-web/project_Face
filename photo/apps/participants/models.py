@@ -7,8 +7,14 @@ Ce module structure les données des invités aux événements :
 3. `PhotoMatch` : Table de liaison établissant les correspondances entre photos d'événements et participants.
 """
 
+import secrets
 from django.db import models
 from apps.media.models import Photo
+
+
+def generate_participant_token():
+    """Génère un jeton secret cryptographiquement sûr pour le participant."""
+    return secrets.token_urlsafe(32)
 
 
 class Participant(models.Model):
@@ -16,8 +22,8 @@ class Participant(models.Model):
     Représente un invité ou participant à un ou plusieurs événements.
 
     L'unicité est portée par le numéro de téléphone au format E.164 (`+226...`),
-    ce qui permet à un utilisateur de retrouver l'ensemble de ses photos même s'il participe
-    à plusieurs cérémonies distinctes au fil des années.
+    utilisé comme fiche contact (ex: pour WhatsApp par les organisateurs).
+    L'accès aux photos et les actions RGPD sont protégés par un jeton secret `access_token`.
     """
     # Cycle de vie de la recherche faciale
     MATCH_STATUS = [
@@ -28,6 +34,14 @@ class Participant(models.Model):
     first_name = models.CharField(max_length=100, help_text="Prénom de l'invité")
     last_name = models.CharField(max_length=100, help_text="Nom de famille de l'invité")
     phone = models.CharField(max_length=30, unique=True, db_index=True, help_text="Numéro WhatsApp normalisé E.164")
+    access_token = models.CharField(
+        max_length=64,
+        unique=True,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="Jeton de session secret pour accès aux photos et gestion RGPD"
+    )
     match_status = models.CharField(max_length=20, choices=MATCH_STATUS, default="no_reference", db_index=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
 
@@ -36,8 +50,14 @@ class Participant(models.Model):
         verbose_name_plural = "Participants"
         indexes = [
             models.Index(fields=["phone"]),
+            models.Index(fields=["access_token"]),
             models.Index(fields=["match_status"]),
         ]
+
+    def save(self, *args, **kwargs):
+        if not self.access_token:
+            self.access_token = generate_participant_token()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.first_name} {self.last_name} ({self.phone})"

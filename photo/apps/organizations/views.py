@@ -407,9 +407,20 @@ class CreateTeamInvitationView(APIView):
         data = serializer.validated_data
 
         org = get_user_organization(request.user)
+        user_role = get_user_role(request.user, org)
+        target_role = data.get("role", "photographer")
+
+        # Règle d'habilitation : un gestionnaire (manager) ne peut inviter que des photographes.
+        # Seul le propriétaire (owner) ou un superadministrateur peut inviter un gestionnaire.
+        if not request.user.is_superuser and user_role == "manager" and target_role != "photographer":
+            return Response(
+                {"error": "En tant que gestionnaire, vous ne pouvez inviter que des photographes. Seul le propriétaire peut inviter des gestionnaires."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         invitation = Invitation.objects.create(
             organization=org,
-            role=data.get("role", "manager"),
+            role=target_role,
             email=data.get("email", ""),
             phone=data.get("phone", ""),
             created_by=request.user,

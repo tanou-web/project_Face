@@ -23,7 +23,7 @@ from drf_spectacular.utils import extend_schema, OpenApiTypes
 
 from apps.events.models import Event
 from apps.media.models import Photo, FaceIndex
-from apps.media.serializers import MultiFileUploadSerializer
+from apps.media.serializers import MultiFileUploadSerializer, PhotoPatchSerializer, AdminPhotoListSerializer
 from apps.media.validators import validate_uploaded_image
 from apps.participants.models import Participant
 from apps.faces.utils import extract_embeddings
@@ -109,6 +109,18 @@ class AdminMediaUploadView(APIView):
         if not files:
             return Response({"error": "Aucun fichier reçu (champ 'files' attendu)."}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Option : définir si le lot de photos est public dans la galerie (par défaut True)
+        is_public_param = request.data.get("isPublic")
+        if is_public_param is None:
+            is_public_param = request.data.get("is_public")
+        if is_public_param is not None:
+            if isinstance(is_public_param, str):
+                default_is_public = is_public_param.lower() in ("true", "1", "yes")
+            else:
+                default_is_public = bool(is_public_param)
+        else:
+            default_is_public = True
+
         processed_count = 0
         for uploaded_file in files:
             try:
@@ -123,7 +135,7 @@ class AdminMediaUploadView(APIView):
                 photo = Photo(
                     event=event,
                     file=uploaded_file,
-                    is_public=True,
+                    is_public=default_is_public,
                 )
                 if thumb_content:
                     photo.thumbnail = thumb_content
@@ -160,13 +172,79 @@ class AdminMediaUploadView(APIView):
 
         return Response({"received": processed_count}, status=status.HTTP_201_CREATED)
 
+    @extend_schema(
+        tags=["Administration"],
+        summary="Lister toutes les photos d'un événement (publiques + privées)",
+        description=(
+            "Retourne la liste intégrale des photos d'un événement, qu'elles soient publiques ou privées.\n"
+            "Indispensable pour l'organisateur qui souhaite retrouver et réactiver une photo passée en privé.\n"
+            "Chaque photo est représentée par : `id`, `thumbnail`, `isPublic`, `legend`, `createdAt`."
+        ),
+        responses={200: AdminPhotoListSerializer(many=True)}
+    )
+    def get(self, request, slug):
+        event = get_object_or_404(Event, slug=slug)
+        user_org = get_user_organization(request.user)
+
+        # Contrôle multi-tenant
+        if not (request.user.is_superuser or (event.organization and event.organization == user_org)):
+            return Response(
+                {"detail": "Vous n'avez pas l'autorisation de consulter les médias de cet événement."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        photos = (
+            Photo.objects
+            .filter(event=event)
+            .order_by("-created_at")
+            .only("id", "thumbnail", "file", "is_public", "legend", "created_at")
+        )
+        serializer = AdminPhotoListSerializer(photos, many=True, context={"request": request})
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class AdminMediaDeleteView(APIView):
     """
-    Suppression définitive d'une photo et de ses indexations faciales.
-    Nettoie également les fichiers physiques stockés sur le disque dur du serveur.
+    Gestion individuelle d'une photo : modification (visibilité publique / légende) ou suppression.
     """
     permission_classes = [IsOrganizationMember]
+
+    @extend_schema(
+        tags=["Administration"],
+        summary="Modifier la visibilité ou la légende d'une photo",
+        description="Permet à l'organisateur de choisir si une photo est exposée dans la galerie publique (`isPublic: true/false`) et d'éditer sa légende.",
+        request=PhotoPatchSerializer,
+        responses={200: OpenApiTypes.OBJECT, 403: OpenApiTypes.OBJECT}
+    )
+    def patch(self, request, pk):
+        photo = get_object_or_404(Photo, pk=pk)
+        user_org = get_user_organization(request.user)
+        is_member = request.user.is_superuser or (photo.event.organization and photo.event.organization == user_org)
+        if not is_member:
+            return Response(
+                {"detail": "Vous n'avez pas l'autorisation de modifier cette photo."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        is_public_param = request.data.get("isPublic")
+        if is_public_param is None:
+            is_public_param = request.data.get("is_public")
+        if is_public_param is not None:
+            if isinstance(is_public_param, str):
+                photo.is_public = is_public_param.lower() in ("true", "1", "yes")
+            else:
+                photo.is_public = bool(is_public_param)
+
+        if "legend" in request.data:
+            photo.legend = request.data["legend"]
+
+        photo.save()
+        return Response({
+            "id": photo.id,
+            "isPublic": photo.is_public,
+            "legend": photo.legend,
+            "message": "Photo mise à jour avec succès."
+        }, status=status.HTTP_200_OK)
 
     @extend_schema(
         tags=["Administration"],
@@ -177,8 +255,9 @@ class AdminMediaDeleteView(APIView):
     def delete(self, request, pk):
         photo = get_object_or_404(Photo, pk=pk)
         # Vérification Multi-Tenant : seuls les membres de l'organisation hôte peuvent supprimer
-        is_owner = hasattr(request.user, "organization") and photo.event.organization == request.user.organization
-        if not (request.user.is_staff or is_owner):
+        user_org = get_user_organization(request.user)
+        is_owner = request.user.is_superuser or (photo.event.organization and photo.event.organization == user_org)
+        if not is_owner:
             return Response(
                 {"detail": "Vous n'avez pas l'autorisation de supprimer cette photo."},
                 status=status.HTTP_403_FORBIDDEN

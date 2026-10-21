@@ -1,1405 +1,3889 @@
-openapi: 3.0.3
-info:
-  title: Plateforme Photo Scan API
-  version: 1.0.0
-  description: |-
-    Documentation interactive de l'API backend Django REST Framework pour la plateforme événementielle avec reconnaissance faciale (Burkina Faso).
-
-    Fonctionnalités principales :
-    - Gestion des événements et galeries médias
-    - Upsert des participants via numéro WhatsApp
-    - Ingestion sécurisée de selfie de référence & matching facial 512D
-    - Endpoints RGPD de suppression et droit à l'oubli
-    - Administration sécurisée via token JWT
-paths:
-  /admin/contacts/:
-    get:
-      operationId: admin_contacts_retrieve
-      description: Récupère les coordonnées des participants et indique si leur référence
-        faciale est valide.
-      summary: Liste des contacts participants
-      parameters:
-      - in: query
-        name: event
-        schema:
-          type: string
-        description: Filtrer les participants par slug d'événement
-      tags:
-      - Administration
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /admin/events/{slug}/logo/:
-    post:
-      operationId: admin_events_logo_create
-      description: Upload d'un logo (champ `file`) et mise à jour de l'événement.
-      summary: Upload de logo pour un événement
-      parameters:
-      - in: path
-        name: slug
-        schema:
-          type: string
-        required: true
-      tags:
-      - Administration
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/SingleFileUploadRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/SingleFileUploadRequest'
-        required: true
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-        '400':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /admin/events/{slug}/media/:
-    post:
-      operationId: admin_events_media_create
-      description: |-
-        Téléversement d'une ou plusieurs photos pour un événement (champ `files`).
-        Pour chaque fichier :
-        1. Enregistre le média original.
-        2. Crée la miniature Pillow (400x400 max) avec correction EXIF.
-        3. Détecte tous les visages et génère les embeddings 512D (`FaceIndex`).
-        4. Actualise automatiquement le matching pour les participants déjà inscrits.
-      summary: Upload multiple de photos avec indexation faciale
-      parameters:
-      - in: path
-        name: slug
-        schema:
-          type: string
-        required: true
-      tags:
-      - Administration
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/MultiFileUploadRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/MultiFileUploadRequest'
-        required: true
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-        '400':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /admin/media/{id}/:
-    delete:
-      operationId: admin_media_destroy
-      description: Supprime la photo et tous ses index faciaux associés.
-      summary: Suppression d'une photo
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - Administration
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /admin/stats/:
-    get:
-      operationId: admin_stats_retrieve
-      description: Retourne le nombre total d'événements, photos, participants et
-        téléchargements.
-      summary: Statistiques globales
-      tags:
-      - Administration
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /api/v1/admin/contacts/:
-    get:
-      operationId: api_v1_admin_contacts_retrieve
-      description: Récupère les coordonnées des participants et indique si leur référence
-        faciale est valide.
-      summary: Liste des contacts participants
-      parameters:
-      - in: query
-        name: event
-        schema:
-          type: string
-        description: Filtrer les participants par slug d'événement
-      tags:
-      - Administration
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /api/v1/admin/events/{slug}/logo/:
-    post:
-      operationId: api_v1_admin_events_logo_create
-      description: Upload d'un logo (champ `file`) et mise à jour de l'événement.
-      summary: Upload de logo pour un événement
-      parameters:
-      - in: path
-        name: slug
-        schema:
-          type: string
-        required: true
-      tags:
-      - Administration
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/SingleFileUploadRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/SingleFileUploadRequest'
-        required: true
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-        '400':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /api/v1/admin/events/{slug}/media/:
-    post:
-      operationId: api_v1_admin_events_media_create
-      description: |-
-        Téléversement d'une ou plusieurs photos pour un événement (champ `files`).
-        Pour chaque fichier :
-        1. Enregistre le média original.
-        2. Crée la miniature Pillow (400x400 max) avec correction EXIF.
-        3. Détecte tous les visages et génère les embeddings 512D (`FaceIndex`).
-        4. Actualise automatiquement le matching pour les participants déjà inscrits.
-      summary: Upload multiple de photos avec indexation faciale
-      parameters:
-      - in: path
-        name: slug
-        schema:
-          type: string
-        required: true
-      tags:
-      - Administration
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/MultiFileUploadRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/MultiFileUploadRequest'
-        required: true
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-        '400':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /api/v1/admin/media/{id}/:
-    delete:
-      operationId: api_v1_admin_media_destroy
-      description: Supprime la photo et tous ses index faciaux associés.
-      summary: Suppression d'une photo
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - Administration
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /api/v1/admin/stats/:
-    get:
-      operationId: api_v1_admin_stats_retrieve
-      description: Retourne le nombre total d'événements, photos, participants et
-        téléchargements.
-      summary: Statistiques globales
-      tags:
-      - Administration
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /api/v1/auth/login/:
-    post:
-      operationId: api_v1_auth_login_create
-      description: 'Authentifie un administrateur à l''aide de son email (ex: admin@clovis-dev.bf)
-        et retourne les tokens access & refresh.'
-      summary: Connexion JWT (email ou username)
-      tags:
-      - Authentification
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CustomTokenObtainPairRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/CustomTokenObtainPairRequest'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/CustomTokenObtainPairRequest'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CustomTokenObtainPair'
-          description: ''
-  /api/v1/auth/refresh/:
-    post:
-      operationId: api_v1_auth_refresh_create
-      description: Génère un nouveau token d'accès à partir du token de rafraîchissement.
-      summary: Rafraîchissement de token JWT
-      tags:
-      - Authentification
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TokenRefreshRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/TokenRefreshRequest'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/TokenRefreshRequest'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TokenRefresh'
-          description: ''
-  /api/v1/events/:
-    get:
-      operationId: api_v1_events_list
-      description: Retourne la liste des événements ordonnés par date décroissante
-        (optimisé SQL sans N+1).
-      summary: Lister tous les événements publics
-      tags:
-      - Événements
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/EventList'
-          description: ''
-  /api/v1/events/{slug}/:
-    get:
-      operationId: api_v1_events_retrieve
-      description: Récupère la fiche détaillée d'un événement avec sa galerie de photos
-        et sa vidéo.
-      summary: Détail d'un événement
-      parameters:
-      - in: path
-        name: slug
-        schema:
-          type: string
-        required: true
-      tags:
-      - Événements
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EventDetail'
-          description: ''
-    patch:
-      operationId: api_v1_events_partial_update
-      description: Permet à l'organisateur / admin de modifier les informations d'un
-        événement.
-      summary: Mise à jour partielle d'un événement
-      parameters:
-      - in: path
-        name: slug
-        schema:
-          type: string
-        required: true
-      tags:
-      - Administration
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PatchedEventPatchRequest'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/PatchedEventPatchRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/PatchedEventPatchRequest'
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EventDetail'
-          description: ''
-  /api/v1/events/{slug}/my-photos/:
-    get:
-      operationId: api_v1_events_my_photos_retrieve
-      description: |-
-        Retourne les photos reconnues pour un participant donné sur un événement.
-        Prend en charge `?participant={id}` ou `?phone={numéro WhatsApp}` pour garantir le bon fonctionnement même lorsque le frontend n'a pas encore persisté l'identifiant.
-      summary: Photos matchées du participant
-      parameters:
-      - in: query
-        name: participant
-        schema:
-          type: integer
-        description: ID unique du participant retourné lors du POST /participants/
-      - in: query
-        name: phone
-        schema:
-          type: string
-        description: 'Numéro WhatsApp du participant (ex: ''+226 70123456'')'
-      - in: path
-        name: slug
-        schema:
-          type: string
-        required: true
-      tags:
-      - Participants
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MyPhotosResponse'
-          description: ''
-  /api/v1/events/{slug}/photos/:
-    get:
-      operationId: api_v1_events_photos_list
-      description: Liste l'ensemble des photos publiques d'un événement.
-      summary: Galerie de photos publiques d'un événement
-      parameters:
-      - in: path
-        name: slug
-        schema:
-          type: string
-        required: true
-      tags:
-      - Événements
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/PhotoItem'
-          description: ''
-  /api/v1/participants/:
-    post:
-      operationId: api_v1_participants_create
-      description: |-
-        Enregistre un participant ou retourne son profil s'il existe déjà grâce à son numéro WhatsApp (`phone`).
-        Retourne l'ID unique requis pour les interactions suivantes.
-      summary: Identifier ou enregistrer un participant (Login / Upsert)
-      tags:
-      - Participants
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ParticipantRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/ParticipantRequest'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/ParticipantRequest'
-        required: true
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Participant'
-          description: ''
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Participant'
-          description: ''
-        '400':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /api/v1/participants/{id}/:
-    delete:
-      operationId: api_v1_participants_destroy
-      description: Supprime définitivement le participant ainsi que toutes ses données
-        et associations.
-      summary: Droit à l'oubli intégral (RGPD)
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - Participants
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /api/v1/participants/{id}/face-reference/:
-    post:
-      operationId: api_v1_participants_face_reference_create
-      description: |-
-        Reçoit le selfie de référence du participant (JPEG ou PNG via champ `file`).
-        1. Vérifie la qualité (taille >= 200x200, netteté >= 50, 1 seul visage centré).
-        2. Extrait l'embedding 512 dimensions InsightFace.
-        3. **Supprime immédiatement l'image brute (conformité RGPD)**.
-        4. Déclenche le matching asynchrone sur l'événement (`?event={slug}`).
-      summary: Uploader le selfie de référence
-      parameters:
-      - in: query
-        name: event
-        schema:
-          type: string
-        description: Slug de l'événement concerné pour le matching ciblé
-      - in: path
-        name: id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - Participants
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/SingleFileUploadRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/SingleFileUploadRequest'
-        required: true
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '202':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-        '400':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-    delete:
-      operationId: api_v1_participants_face_reference_destroy
-      description: Supprime l'embedding facial du participant et réinitialise son
-        statut à 'no_reference'.
-      summary: Supprimer la référence faciale (RGPD)
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - Participants
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /auth/login/:
-    post:
-      operationId: auth_login_create
-      description: 'Authentifie un administrateur à l''aide de son email (ex: admin@clovis-dev.bf)
-        et retourne les tokens access & refresh.'
-      summary: Connexion JWT (email ou username)
-      tags:
-      - Authentification
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CustomTokenObtainPairRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/CustomTokenObtainPairRequest'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/CustomTokenObtainPairRequest'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/CustomTokenObtainPair'
-          description: ''
-  /auth/refresh/:
-    post:
-      operationId: auth_refresh_create
-      description: Génère un nouveau token d'accès à partir du token de rafraîchissement.
-      summary: Rafraîchissement de token JWT
-      tags:
-      - Authentification
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TokenRefreshRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/TokenRefreshRequest'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/TokenRefreshRequest'
-        required: true
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TokenRefresh'
-          description: ''
-  /events/:
-    get:
-      operationId: events_list
-      description: Retourne la liste des événements ordonnés par date décroissante
-        (optimisé SQL sans N+1).
-      summary: Lister tous les événements publics
-      tags:
-      - Événements
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/EventList'
-          description: ''
-  /events/{slug}/:
-    get:
-      operationId: events_retrieve
-      description: Récupère la fiche détaillée d'un événement avec sa galerie de photos
-        et sa vidéo.
-      summary: Détail d'un événement
-      parameters:
-      - in: path
-        name: slug
-        schema:
-          type: string
-        required: true
-      tags:
-      - Événements
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EventDetail'
-          description: ''
-    patch:
-      operationId: events_partial_update
-      description: Permet à l'organisateur / admin de modifier les informations d'un
-        événement.
-      summary: Mise à jour partielle d'un événement
-      parameters:
-      - in: path
-        name: slug
-        schema:
-          type: string
-        required: true
-      tags:
-      - Administration
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/PatchedEventPatchRequest'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/PatchedEventPatchRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/PatchedEventPatchRequest'
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EventDetail'
-          description: ''
-  /events/{slug}/my-photos/:
-    get:
-      operationId: events_my_photos_retrieve
-      description: |-
-        Retourne les photos reconnues pour un participant donné sur un événement.
-        Prend en charge `?participant={id}` ou `?phone={numéro WhatsApp}` pour garantir le bon fonctionnement même lorsque le frontend n'a pas encore persisté l'identifiant.
-      summary: Photos matchées du participant
-      parameters:
-      - in: query
-        name: participant
-        schema:
-          type: integer
-        description: ID unique du participant retourné lors du POST /participants/
-      - in: query
-        name: phone
-        schema:
-          type: string
-        description: 'Numéro WhatsApp du participant (ex: ''+226 70123456'')'
-      - in: path
-        name: slug
-        schema:
-          type: string
-        required: true
-      tags:
-      - Participants
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/MyPhotosResponse'
-          description: ''
-  /events/{slug}/photos/:
-    get:
-      operationId: events_photos_list
-      description: Liste l'ensemble des photos publiques d'un événement.
-      summary: Galerie de photos publiques d'un événement
-      parameters:
-      - in: path
-        name: slug
-        schema:
-          type: string
-        required: true
-      tags:
-      - Événements
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/PhotoItem'
-          description: ''
-  /participants/:
-    post:
-      operationId: participants_create
-      description: |-
-        Enregistre un participant ou retourne son profil s'il existe déjà grâce à son numéro WhatsApp (`phone`).
-        Retourne l'ID unique requis pour les interactions suivantes.
-      summary: Identifier ou enregistrer un participant (Login / Upsert)
-      tags:
-      - Participants
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ParticipantRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/ParticipantRequest'
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/ParticipantRequest'
-        required: true
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '201':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Participant'
-          description: ''
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Participant'
-          description: ''
-        '400':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /participants/{id}/:
-    delete:
-      operationId: participants_destroy
-      description: Supprime définitivement le participant ainsi que toutes ses données
-        et associations.
-      summary: Droit à l'oubli intégral (RGPD)
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - Participants
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-  /participants/{id}/face-reference/:
-    post:
-      operationId: participants_face_reference_create
-      description: |-
-        Reçoit le selfie de référence du participant (JPEG ou PNG via champ `file`).
-        1. Vérifie la qualité (taille >= 200x200, netteté >= 50, 1 seul visage centré).
-        2. Extrait l'embedding 512 dimensions InsightFace.
-        3. **Supprime immédiatement l'image brute (conformité RGPD)**.
-        4. Déclenche le matching asynchrone sur l'événement (`?event={slug}`).
-      summary: Uploader le selfie de référence
-      parameters:
-      - in: query
-        name: event
-        schema:
-          type: string
-        description: Slug de l'événement concerné pour le matching ciblé
-      - in: path
-        name: id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - Participants
-      requestBody:
-        content:
-          multipart/form-data:
-            schema:
-              $ref: '#/components/schemas/SingleFileUploadRequest'
-          application/x-www-form-urlencoded:
-            schema:
-              $ref: '#/components/schemas/SingleFileUploadRequest'
-        required: true
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '202':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-        '400':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-    delete:
-      operationId: participants_face_reference_destroy
-      description: Supprime l'embedding facial du participant et réinitialise son
-        statut à 'no_reference'.
-      summary: Supprimer la référence faciale (RGPD)
-      parameters:
-      - in: path
-        name: id
-        schema:
-          type: integer
-        required: true
-      tags:
-      - Participants
-      security:
-      - jwtAuth: []
-      - cookieAuth: []
-      - {}
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                type: object
-                additionalProperties: {}
-          description: ''
-components:
-  schemas:
-    CustomTokenObtainPair:
-      type: object
-      properties:
-        email:
-          type: string
-          format: email
-    CustomTokenObtainPairRequest:
-      type: object
-      properties:
-        username:
-          type: string
-          writeOnly: true
-          minLength: 1
-        password:
-          type: string
-          writeOnly: true
-          minLength: 1
-        email:
-          type: string
-          format: email
-          minLength: 1
-      required:
-      - password
-    EventDetail:
-      type: object
-      properties:
-        slug:
-          type: string
-          maxLength: 50
-          pattern: ^[-a-zA-Z0-9_]+$
-        name:
-          type: string
-          maxLength: 200
-        tagline:
-          type: string
-          maxLength: 300
-        description:
-          type: string
-        logoUrl:
-          type: string
-          format: uri
-          readOnly: true
-        city:
-          type: string
-          maxLength: 100
-        venue:
-          type: string
-          maxLength: 200
-        date:
-          type: string
-          format: date
-        dateLabel:
-          type: string
-          readOnly: true
-        status:
-          $ref: '#/components/schemas/EventStatusEnum'
-        cover:
-          type: string
-          format: uri
-          readOnly: true
-        theme:
-          type: object
-          additionalProperties: {}
-          readOnly: true
-        organizer:
-          type: object
-          additionalProperties: {}
-          readOnly: true
-        highlights: {}
-        photos:
-          type: array
-          items:
-            $ref: '#/components/schemas/PhotoItem'
-          readOnly: true
-        video:
-          allOf:
-          - $ref: '#/components/schemas/VideoItem'
-          readOnly: true
-        participants:
-          type: integer
-          readOnly: true
-        photosCount:
-          type: integer
-          readOnly: true
-      required:
-      - city
-      - cover
-      - date
-      - dateLabel
-      - description
-      - logoUrl
-      - name
-      - organizer
-      - participants
-      - photos
-      - photosCount
-      - slug
-      - tagline
-      - theme
-      - video
-    EventList:
-      type: object
-      properties:
-        slug:
-          type: string
-          maxLength: 50
-          pattern: ^[-a-zA-Z0-9_]+$
-        name:
-          type: string
-          maxLength: 200
-        tagline:
-          type: string
-          maxLength: 300
-        description:
-          type: string
-        logoUrl:
-          type: string
-          format: uri
-          readOnly: true
-        city:
-          type: string
-          maxLength: 100
-        venue:
-          type: string
-          maxLength: 200
-        date:
-          type: string
-          format: date
-        dateLabel:
-          type: string
-          readOnly: true
-        status:
-          $ref: '#/components/schemas/EventStatusEnum'
-        cover:
-          type: string
-          format: uri
-          readOnly: true
-        theme:
-          type: object
-          additionalProperties: {}
-          readOnly: true
-        organizer:
-          type: object
-          additionalProperties: {}
-          readOnly: true
-        highlights: {}
-        photos:
-          type: array
-          items:
-            $ref: '#/components/schemas/PhotoItem'
-          readOnly: true
-        video:
-          allOf:
-          - $ref: '#/components/schemas/VideoItem'
-          readOnly: true
-        participants:
-          type: integer
-          readOnly: true
-        photosCount:
-          type: integer
-          readOnly: true
-      required:
-      - city
-      - cover
-      - date
-      - dateLabel
-      - description
-      - logoUrl
-      - name
-      - organizer
-      - participants
-      - photos
-      - photosCount
-      - slug
-      - tagline
-      - theme
-      - video
-    EventPatchStatusEnum:
-      enum:
-      - en_ligne
-      - traitement
-      - archive
-      type: string
-      description: |-
-        * `en_ligne` - en_ligne
-        * `traitement` - traitement
-        * `archive` - archive
-    EventStatusEnum:
-      enum:
-      - en_ligne
-      - traitement
-      - archive
-      type: string
-      description: |-
-        * `en_ligne` - En ligne
-        * `traitement` - Traitement
-        * `archive` - Archive
-    MultiFileUploadRequest:
-      type: object
-      properties:
-        files:
-          type: array
-          items:
-            type: string
-            format: binary
-          description: Sélection de photos à téléverser et indexer
-      required:
-      - files
-    MyPhotosResponse:
-      type: object
-      properties:
-        status:
-          $ref: '#/components/schemas/MyPhotosResponseStatusEnum'
-        photos:
-          type: array
-          items:
-            type: object
-            additionalProperties: {}
-      required:
-      - photos
-      - status
-    MyPhotosResponseStatusEnum:
-      enum:
-      - no_reference
-      - pending
-      - ready
-      type: string
-      description: |-
-        * `no_reference` - no_reference
-        * `pending` - pending
-        * `ready` - ready
-    Participant:
-      type: object
-      properties:
-        id:
-          type: integer
-          readOnly: true
-        firstName:
-          type: string
-        lastName:
-          type: string
-        phone:
-          type: string
-          maxLength: 30
-      required:
-      - firstName
-      - id
-      - lastName
-      - phone
-    ParticipantRequest:
-      type: object
-      properties:
-        firstName:
-          type: string
-          minLength: 1
-        lastName:
-          type: string
-          minLength: 1
-        phone:
-          type: string
-          minLength: 1
-          maxLength: 30
-      required:
-      - firstName
-      - lastName
-      - phone
-    PatchedEventPatchRequest:
-      type: object
-      properties:
-        name:
-          type: string
-          minLength: 1
-          description: Nom de l'événement
-        tagline:
-          type: string
-          minLength: 1
-        description:
-          type: string
-          minLength: 1
-        city:
-          type: string
-          minLength: 1
-        venue:
-          type: string
-          minLength: 1
-        status:
-          $ref: '#/components/schemas/EventPatchStatusEnum'
-        accent_color:
-          type: string
-          minLength: 1
-        accent_text_color:
-          type: string
-          minLength: 1
-        organizer_name:
-          type: string
-          minLength: 1
-        organizer_about:
-          type: string
-          minLength: 1
-        organizer_website:
-          type: string
-          format: uri
-          minLength: 1
-        organizer_phone:
-          type: string
-          minLength: 1
-        highlights:
-          type: array
-          items:
-            type: string
-            minLength: 1
-    PhotoItem:
-      type: object
-      properties:
-        id:
-          type: string
-        src:
-          type: string
-          format: uri
-          readOnly: true
-        legend:
-          type: string
-          maxLength: 200
-        isPublic:
-          type: boolean
-      required:
-      - id
-      - isPublic
-      - src
-    SingleFileUploadRequest:
-      type: object
-      properties:
-        file:
-          type: string
-          format: binary
-          description: Fichier image (JPEG ou PNG)
-      required:
-      - file
-    TokenRefresh:
-      type: object
-      properties:
-        access:
-          type: string
-          readOnly: true
-        refresh:
-          type: string
-      required:
-      - access
-      - refresh
-    TokenRefreshRequest:
-      type: object
-      properties:
-        refresh:
-          type: string
-          minLength: 1
-      required:
-      - refresh
-    VideoItem:
-      type: object
-      properties:
-        src:
-          type: string
-          format: uri
-          readOnly: true
-        title:
-          type: string
-          maxLength: 200
-        duration:
-          type: string
-          maxLength: 20
-        sizeLabel:
-          type: string
-      required:
-      - duration
-      - sizeLabel
-      - src
-      - title
-  securitySchemes:
-    cookieAuth:
-      type: apiKey
-      in: cookie
-      name: sessionid
-    jwtAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-tags:
-- name: Authentification
-  description: Connexion et rafraîchissement des tokens JWT
-- name: Événements
-  description: Consultation publique des événements et galeries
-- name: Participants
-  description: Enregistrement, selfies de référence et RGPD
-- name: Administration
-  description: Statistiques, upload médias et gestion des organisateurs
+{
+    "openapi": "3.0.3",
+    "info": {
+        "title": "Plateforme Photo Scan API",
+        "version": "1.0.0",
+        "description": "Documentation interactive de l'API backend Django REST Framework pour la plateforme événementielle avec reconnaissance faciale (Burkina Faso).\n\nFonctionnalités principales :\n- Gestion des événements et galeries médias\n- Upsert des participants via numéro WhatsApp\n- Ingestion sécurisée de selfie de référence & matching facial 512D\n- Endpoints RGPD de suppression et droit à l'oubli\n- Administration sécurisée via token JWT"
+    },
+    "paths": {
+        "/admin/clients/create/": {
+            "post": {
+                "operationId": "admin_clients_create_create",
+                "description": "L'administrateur plateforme crée l'organisation et le compte client. Retourne un lien unique valable 7 jours pour que le client définisse son mot de passe sans passer par un email.",
+                "summary": "Créer un compte client avec lien WhatsApp copiable (Option B)",
+                "tags": [
+                    "Plateforme Admin"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateClientAccountRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateClientAccountRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateClientAccountRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/admin/contacts/": {
+            "get": {
+                "operationId": "admin_contacts_retrieve",
+                "description": "Récupère les coordonnées des participants et indique si leur référence faciale est valide.",
+                "summary": "Liste des contacts participants de l'organisation",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "event",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Filtrer les participants par slug d'événement"
+                    }
+                ],
+                "tags": [
+                    "Administration"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/admin/events/": {
+            "get": {
+                "operationId": "admin_events_list",
+                "description": "Ne renvoie que les événements appartenant à l'organisation de l'utilisateur connecté (aucun événement des autres clients n'apparaît).",
+                "summary": "Lister les événements de l'organisation",
+                "tags": [
+                    "Administration"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/EventList"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "post": {
+                "operationId": "admin_events_create",
+                "description": "Crée un nouvel événement et l'associe automatiquement à l'organisation connectée. Seuls les rôles 'owner' et 'manager' sont autorisés ('photographer' reçoit 403 Forbidden).",
+                "summary": "Créer un événement pour l'organisation",
+                "tags": [
+                    "Administration"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/EventCreateRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/EventCreateRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/EventCreateRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EventDetail"
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/admin/events/{slug}/logo/": {
+            "post": {
+                "operationId": "admin_events_logo_create",
+                "description": "Upload d'un logo (champ `file`) et mise à jour de l'événement.",
+                "summary": "Upload de logo pour un événement",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Administration"
+                ],
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SingleFileUploadRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SingleFileUploadRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/admin/events/{slug}/media/": {
+            "get": {
+                "operationId": "admin_events_media_list",
+                "description": "Retourne la liste intégrale des photos d'un événement, qu'elles soient publiques ou privées.\nIndispensable pour l'organisateur qui souhaite retrouver et réactiver une photo passée en privé.\nChaque photo est représentée par : `id`, `thumbnail`, `isPublic`, `legend`, `createdAt`.",
+                "summary": "Lister toutes les photos d'un événement (publiques + privées)",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Administration"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/AdminPhotoList"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "post": {
+                "operationId": "admin_events_media_create",
+                "description": "Téléversement d'une ou plusieurs photos pour un événement (champ `files`).\nPour chaque fichier :\n1. Enregistre le média original.\n2. Crée la miniature Pillow (400x400 max) avec correction EXIF.\n3. Détecte tous les visages et génère les embeddings 512D (`FaceIndex`).\n4. Actualise automatiquement le matching pour les participants déjà inscrits.",
+                "summary": "Upload multiple de photos avec indexation faciale",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Administration"
+                ],
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MultiFileUploadRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MultiFileUploadRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/admin/media/{id}/": {
+            "patch": {
+                "operationId": "admin_media_partial_update",
+                "description": "Permet à l'organisateur de choisir si une photo est exposée dans la galerie publique (`isPublic: true/false`) et d'éditer sa légende.",
+                "summary": "Modifier la visibilité ou la légende d'une photo",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Administration"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedPhotoPatchRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedPhotoPatchRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedPhotoPatchRequest"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "admin_media_destroy",
+                "description": "Supprime la photo et tous ses index faciaux associés.",
+                "summary": "Suppression d'une photo",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Administration"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/admin/stats/": {
+            "get": {
+                "operationId": "admin_stats_retrieve",
+                "description": "Retourne le nombre total d'événements, photos, participants et téléchargements de l'organisation.",
+                "summary": "Statistiques globales de l'organisation",
+                "tags": [
+                    "Administration"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/admin/team/": {
+            "get": {
+                "operationId": "admin_team_list",
+                "description": "Gestion des membres d'équipe au sein de l'organisation connectée.\nPermet au propriétaire et aux gestionnaires de consulter la liste des collaborateurs actuels.",
+                "summary": "Lister les collaborateurs de l'organisation",
+                "tags": [
+                    "Équipe SaaS"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/TeamMember"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/admin/team/{id}/": {
+            "delete": {
+                "operationId": "admin_team_destroy",
+                "description": "Retire un membre de l'organisation. Seul un propriétaire ou gestionnaire peut effectuer cette action. Le propriétaire principal ne peut pas être retiré.",
+                "summary": "Retirer un collaborateur de l'équipe",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Équipe SaaS"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/admin/team/invite/": {
+            "post": {
+                "operationId": "admin_team_invite_create",
+                "description": "Retourne un lien WhatsApp copiable avec le rôle spécifié ('manager' ou 'photographer'). Rôles vérifiés côté API (403).",
+                "summary": "Générer un lien d'invitation pour un collaborateur (valable 7 jours)",
+                "tags": [
+                    "Équipe SaaS"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateInvitationRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateInvitationRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateInvitationRequest"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/clients/create/": {
+            "post": {
+                "operationId": "api_v1_admin_clients_create_create",
+                "description": "L'administrateur plateforme crée l'organisation et le compte client. Retourne un lien unique valable 7 jours pour que le client définisse son mot de passe sans passer par un email.",
+                "summary": "Créer un compte client avec lien WhatsApp copiable (Option B)",
+                "tags": [
+                    "Plateforme Admin"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateClientAccountRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateClientAccountRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateClientAccountRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/contacts/": {
+            "get": {
+                "operationId": "api_v1_admin_contacts_retrieve",
+                "description": "Récupère les coordonnées des participants et indique si leur référence faciale est valide.",
+                "summary": "Liste des contacts participants de l'organisation",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "event",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Filtrer les participants par slug d'événement"
+                    }
+                ],
+                "tags": [
+                    "Administration"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/events/": {
+            "get": {
+                "operationId": "api_v1_admin_events_list",
+                "description": "Ne renvoie que les événements appartenant à l'organisation de l'utilisateur connecté (aucun événement des autres clients n'apparaît).",
+                "summary": "Lister les événements de l'organisation",
+                "tags": [
+                    "Administration"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/EventList"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "post": {
+                "operationId": "api_v1_admin_events_create",
+                "description": "Crée un nouvel événement et l'associe automatiquement à l'organisation connectée. Seuls les rôles 'owner' et 'manager' sont autorisés ('photographer' reçoit 403 Forbidden).",
+                "summary": "Créer un événement pour l'organisation",
+                "tags": [
+                    "Administration"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/EventCreateRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/EventCreateRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/EventCreateRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EventDetail"
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/events/{slug}/logo/": {
+            "post": {
+                "operationId": "api_v1_admin_events_logo_create",
+                "description": "Upload d'un logo (champ `file`) et mise à jour de l'événement.",
+                "summary": "Upload de logo pour un événement",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Administration"
+                ],
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SingleFileUploadRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SingleFileUploadRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/events/{slug}/media/": {
+            "get": {
+                "operationId": "api_v1_admin_events_media_list",
+                "description": "Retourne la liste intégrale des photos d'un événement, qu'elles soient publiques ou privées.\nIndispensable pour l'organisateur qui souhaite retrouver et réactiver une photo passée en privé.\nChaque photo est représentée par : `id`, `thumbnail`, `isPublic`, `legend`, `createdAt`.",
+                "summary": "Lister toutes les photos d'un événement (publiques + privées)",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Administration"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/AdminPhotoList"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "post": {
+                "operationId": "api_v1_admin_events_media_create",
+                "description": "Téléversement d'une ou plusieurs photos pour un événement (champ `files`).\nPour chaque fichier :\n1. Enregistre le média original.\n2. Crée la miniature Pillow (400x400 max) avec correction EXIF.\n3. Détecte tous les visages et génère les embeddings 512D (`FaceIndex`).\n4. Actualise automatiquement le matching pour les participants déjà inscrits.",
+                "summary": "Upload multiple de photos avec indexation faciale",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Administration"
+                ],
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MultiFileUploadRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/MultiFileUploadRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/media/{id}/": {
+            "patch": {
+                "operationId": "api_v1_admin_media_partial_update",
+                "description": "Permet à l'organisateur de choisir si une photo est exposée dans la galerie publique (`isPublic: true/false`) et d'éditer sa légende.",
+                "summary": "Modifier la visibilité ou la légende d'une photo",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Administration"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedPhotoPatchRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedPhotoPatchRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedPhotoPatchRequest"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "api_v1_admin_media_destroy",
+                "description": "Supprime la photo et tous ses index faciaux associés.",
+                "summary": "Suppression d'une photo",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Administration"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/stats/": {
+            "get": {
+                "operationId": "api_v1_admin_stats_retrieve",
+                "description": "Retourne le nombre total d'événements, photos, participants et téléchargements de l'organisation.",
+                "summary": "Statistiques globales de l'organisation",
+                "tags": [
+                    "Administration"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/team/": {
+            "get": {
+                "operationId": "api_v1_admin_team_list",
+                "description": "Gestion des membres d'équipe au sein de l'organisation connectée.\nPermet au propriétaire et aux gestionnaires de consulter la liste des collaborateurs actuels.",
+                "summary": "Lister les collaborateurs de l'organisation",
+                "tags": [
+                    "Équipe SaaS"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/TeamMember"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/team/{id}/": {
+            "delete": {
+                "operationId": "api_v1_admin_team_destroy",
+                "description": "Retire un membre de l'organisation. Seul un propriétaire ou gestionnaire peut effectuer cette action. Le propriétaire principal ne peut pas être retiré.",
+                "summary": "Retirer un collaborateur de l'équipe",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Équipe SaaS"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/admin/team/invite/": {
+            "post": {
+                "operationId": "api_v1_admin_team_invite_create",
+                "description": "Retourne un lien WhatsApp copiable avec le rôle spécifié ('manager' ou 'photographer'). Rôles vérifiés côté API (403).",
+                "summary": "Générer un lien d'invitation pour un collaborateur (valable 7 jours)",
+                "tags": [
+                    "Équipe SaaS"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateInvitationRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateInvitationRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateInvitationRequest"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/login/": {
+            "post": {
+                "operationId": "api_v1_auth_login_create",
+                "description": "Authentifie un administrateur à l'aide de son email (ex: admin@clovis-dev.bf) et retourne les tokens access & refresh.",
+                "summary": "Connexion JWT (email ou username)",
+                "tags": [
+                    "Authentification"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CustomTokenObtainPairRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CustomTokenObtainPairRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CustomTokenObtainPairRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CustomTokenObtainPair"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/me/": {
+            "get": {
+                "operationId": "api_v1_auth_me_retrieve",
+                "description": "Retourne les informations de l'utilisateur, l'organisation à laquelle il appartient et son rôle ('owner', 'manager', 'photographer' ou 'superuser'). Permet d'adapter l'interface et les menus frontend.",
+                "summary": "Profil de l'utilisateur connecté avec son organisation et rôle",
+                "tags": [
+                    "Authentification"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AuthMeResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/refresh/": {
+            "post": {
+                "operationId": "api_v1_auth_refresh_create",
+                "description": "Génère un nouveau token d'accès à partir du token de rafraîchissement.",
+                "summary": "Rafraîchissement de token JWT",
+                "tags": [
+                    "Authentification"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TokenRefreshRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TokenRefreshRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TokenRefreshRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TokenRefresh"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/auth/set-password/": {
+            "get": {
+                "operationId": "api_v1_auth_set_password_retrieve",
+                "description": "Permet à la page frontend 'Définir mon mot de passe' de vérifier si le lien est valide, non expiré et de récupérer le nom de l'organisation et le profil invité avant la saisie.",
+                "summary": "Vérifier la validité d'un lien d'invitation (token)",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "token",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Jeton unique d'invitation reçu dans l'URL",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Authentification"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "post": {
+                "operationId": "api_v1_auth_set_password_create",
+                "description": "Active le compte et enregistre le mot de passe du client ou du collaborateur à partir du token d'invitation WhatsApp.",
+                "summary": "Définir son mot de passe et accepter l'invitation",
+                "tags": [
+                    "Authentification"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SetPasswordFromTokenRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SetPasswordFromTokenRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SetPasswordFromTokenRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/events/": {
+            "get": {
+                "operationId": "api_v1_events_list",
+                "description": "Retourne la liste des événements publics en ligne. Peut être filtré par organisation via `?org=<slug_organisation>` pour afficher la page dédiée d'un organisateur.",
+                "summary": "Lister les événements publics",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "org",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Slug de l'organisation pour n'afficher que ses événements publics (ex: 'faso-business-club')"
+                    }
+                ],
+                "tags": [
+                    "Événements"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/EventList"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/events/{slug}/": {
+            "get": {
+                "operationId": "api_v1_events_retrieve",
+                "description": "Récupère la fiche détaillée d'un événement avec sa galerie de photos et sa vidéo.",
+                "summary": "Détail d'un événement",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Événements"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EventDetail"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "patch": {
+                "operationId": "api_v1_events_partial_update",
+                "description": "Permet à l'organisateur / admin de modifier les informations d'un événement (date, nom, thème, statut).",
+                "summary": "Mise à jour partielle d'un événement",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Administration"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedEventPatchRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedEventPatchRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedEventPatchRequest"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EventDetail"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/events/{slug}/my-photos/": {
+            "get": {
+                "operationId": "api_v1_events_my_photos_retrieve",
+                "description": "Retourne les photos reconnues par reconnaissance faciale pour un participant sur un événement.\nSécurité : L'accès nécessite le jeton secret `access_token` du participant (reçu lors du scan / enregistrement), transmis via le header `X-Participant-Token` ou le paramètre `?token=`.\nAucune consultation par numéro de téléphone n'est autorisée (numéro réservé au contact WhatsApp organisateur).",
+                "summary": "Photos matchées du participant",
+                "parameters": [
+                    {
+                        "in": "header",
+                        "name": "X-Participant-Token",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Jeton secret access_token du participant"
+                    },
+                    {
+                        "in": "query",
+                        "name": "participant",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "ID du participant (réservé aux administrateurs ou accompagné du token)"
+                    },
+                    {
+                        "in": "path",
+                        "name": "slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    },
+                    {
+                        "in": "query",
+                        "name": "token",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Jeton secret access_token du participant (reçu lors du POST /participants/)"
+                    }
+                ],
+                "tags": [
+                    "Participants"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MyPhotosResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/events/{slug}/photos/": {
+            "get": {
+                "operationId": "api_v1_events_photos_list",
+                "description": "Liste l'ensemble des photos publiques d'un événement.",
+                "summary": "Galerie de photos publiques d'un événement",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Événements"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/PhotoItem"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/participants/": {
+            "post": {
+                "operationId": "api_v1_participants_create",
+                "description": "Enregistre un participant ou retourne son profil s'il existe déjà grâce à son numéro WhatsApp (`phone`).\nLe numéro est automatiquement normalisé au format E.164 (+226XXXXXXXXX).\nSi aucun indicatif n'est fourni, +226 (Burkina Faso) est ajouté par défaut.\nRetourne l'ID unique requis pour les interactions suivantes.",
+                "summary": "Identifier ou enregistrer un participant (Login / Upsert)",
+                "tags": [
+                    "Participants"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ParticipantRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ParticipantRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ParticipantRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Participant"
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Participant"
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/participants/{id}/": {
+            "delete": {
+                "operationId": "api_v1_participants_destroy",
+                "description": "Supprime définitivement le participant ainsi que toutes ses données et associations.\nAccessible par l'admin (JWT) ou le participant lui-même via header `X-Participant-Token` (jeton confidentiel `access_token` généré aléatoirement lors de l'enregistrement).",
+                "summary": "Droit à l'oubli intégral (RGPD)",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Participants"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/api/v1/participants/{id}/face-reference/": {
+            "post": {
+                "operationId": "api_v1_participants_face_reference_create",
+                "description": "Reçoit le selfie de référence du participant (JPEG ou PNG via champ `file`).\n**Requiert** le jeton participant dans le header `X-Participant-Token` (ou `Authorization: Bearer <token>`) — même jeton que pour les opérations RGPD.\n1. Vérifie la qualité (taille >= 200x200, netteté >= 50, 1 seul visage centré).\n2. Extrait l'embedding 512 dimensions InsightFace.\n3. **Supprime immédiatement l'image brute (conformité RGPD)**.\n4. Déclenche le matching asynchrone sur l'événement (`?event={slug}`).",
+                "summary": "Uploader le selfie de référence",
+                "parameters": [
+                    {
+                        "in": "header",
+                        "name": "X-Participant-Token",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Jeton d'accès confidentiel du participant (`access_token`)",
+                        "required": true
+                    },
+                    {
+                        "in": "query",
+                        "name": "event",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Slug de l'événement concerné pour le matching ciblé"
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Participants"
+                ],
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SingleFileUploadRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SingleFileUploadRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "202": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "api_v1_participants_face_reference_destroy",
+                "description": "Supprime l'embedding facial du participant et réinitialise son statut à 'no_reference'.\nAccessible par l'admin (JWT) ou le participant lui-même via header `X-Participant-Token` (jeton confidentiel `access_token` généré aléatoirement lors de l'enregistrement).",
+                "summary": "Supprimer la référence faciale (RGPD)",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Participants"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/auth/login/": {
+            "post": {
+                "operationId": "auth_login_create",
+                "description": "Authentifie un administrateur à l'aide de son email (ex: admin@clovis-dev.bf) et retourne les tokens access & refresh.",
+                "summary": "Connexion JWT (email ou username)",
+                "tags": [
+                    "Authentification"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CustomTokenObtainPairRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CustomTokenObtainPairRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CustomTokenObtainPairRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/CustomTokenObtainPair"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/auth/me/": {
+            "get": {
+                "operationId": "auth_me_retrieve",
+                "description": "Retourne les informations de l'utilisateur, l'organisation à laquelle il appartient et son rôle ('owner', 'manager', 'photographer' ou 'superuser'). Permet d'adapter l'interface et les menus frontend.",
+                "summary": "Profil de l'utilisateur connecté avec son organisation et rôle",
+                "tags": [
+                    "Authentification"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/AuthMeResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/auth/refresh/": {
+            "post": {
+                "operationId": "auth_refresh_create",
+                "description": "Génère un nouveau token d'accès à partir du token de rafraîchissement.",
+                "summary": "Rafraîchissement de token JWT",
+                "tags": [
+                    "Authentification"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TokenRefreshRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TokenRefreshRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/TokenRefreshRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/TokenRefresh"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/auth/set-password/": {
+            "get": {
+                "operationId": "auth_set_password_retrieve",
+                "description": "Permet à la page frontend 'Définir mon mot de passe' de vérifier si le lien est valide, non expiré et de récupérer le nom de l'organisation et le profil invité avant la saisie.",
+                "summary": "Vérifier la validité d'un lien d'invitation (token)",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "token",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Jeton unique d'invitation reçu dans l'URL",
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Authentification"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "post": {
+                "operationId": "auth_set_password_create",
+                "description": "Active le compte et enregistre le mot de passe du client ou du collaborateur à partir du token d'invitation WhatsApp.",
+                "summary": "Définir son mot de passe et accepter l'invitation",
+                "tags": [
+                    "Authentification"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SetPasswordFromTokenRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SetPasswordFromTokenRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SetPasswordFromTokenRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "404": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/events/": {
+            "get": {
+                "operationId": "events_list",
+                "description": "Retourne la liste des événements publics en ligne. Peut être filtré par organisation via `?org=<slug_organisation>` pour afficher la page dédiée d'un organisateur.",
+                "summary": "Lister les événements publics",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "org",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Slug de l'organisation pour n'afficher que ses événements publics (ex: 'faso-business-club')"
+                    }
+                ],
+                "tags": [
+                    "Événements"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/EventList"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/events/{slug}/": {
+            "get": {
+                "operationId": "events_retrieve",
+                "description": "Récupère la fiche détaillée d'un événement avec sa galerie de photos et sa vidéo.",
+                "summary": "Détail d'un événement",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Événements"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EventDetail"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "patch": {
+                "operationId": "events_partial_update",
+                "description": "Permet à l'organisateur / admin de modifier les informations d'un événement (date, nom, thème, statut).",
+                "summary": "Mise à jour partielle d'un événement",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Administration"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedEventPatchRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedEventPatchRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PatchedEventPatchRequest"
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EventDetail"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/events/{slug}/my-photos/": {
+            "get": {
+                "operationId": "events_my_photos_retrieve",
+                "description": "Retourne les photos reconnues par reconnaissance faciale pour un participant sur un événement.\nSécurité : L'accès nécessite le jeton secret `access_token` du participant (reçu lors du scan / enregistrement), transmis via le header `X-Participant-Token` ou le paramètre `?token=`.\nAucune consultation par numéro de téléphone n'est autorisée (numéro réservé au contact WhatsApp organisateur).",
+                "summary": "Photos matchées du participant",
+                "parameters": [
+                    {
+                        "in": "header",
+                        "name": "X-Participant-Token",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Jeton secret access_token du participant"
+                    },
+                    {
+                        "in": "query",
+                        "name": "participant",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "description": "ID du participant (réservé aux administrateurs ou accompagné du token)"
+                    },
+                    {
+                        "in": "path",
+                        "name": "slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    },
+                    {
+                        "in": "query",
+                        "name": "token",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Jeton secret access_token du participant (reçu lors du POST /participants/)"
+                    }
+                ],
+                "tags": [
+                    "Participants"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/MyPhotosResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/events/{slug}/photos/": {
+            "get": {
+                "operationId": "events_photos_list",
+                "description": "Liste l'ensemble des photos publiques d'un événement.",
+                "summary": "Galerie de photos publiques d'un événement",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "slug",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Événements"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "$ref": "#/components/schemas/PhotoItem"
+                                    }
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/participants/": {
+            "post": {
+                "operationId": "participants_create",
+                "description": "Enregistre un participant ou retourne son profil s'il existe déjà grâce à son numéro WhatsApp (`phone`).\nLe numéro est automatiquement normalisé au format E.164 (+226XXXXXXXXX).\nSi aucun indicatif n'est fourni, +226 (Burkina Faso) est ajouté par défaut.\nRetourne l'ID unique requis pour les interactions suivantes.",
+                "summary": "Identifier ou enregistrer un participant (Login / Upsert)",
+                "tags": [
+                    "Participants"
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ParticipantRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ParticipantRequest"
+                            }
+                        },
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ParticipantRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "201": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Participant"
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/Participant"
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/participants/{id}/": {
+            "delete": {
+                "operationId": "participants_destroy",
+                "description": "Supprime définitivement le participant ainsi que toutes ses données et associations.\nAccessible par l'admin (JWT) ou le participant lui-même via header `X-Participant-Token` (jeton confidentiel `access_token` généré aléatoirement lors de l'enregistrement).",
+                "summary": "Droit à l'oubli intégral (RGPD)",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Participants"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
+        "/participants/{id}/face-reference/": {
+            "post": {
+                "operationId": "participants_face_reference_create",
+                "description": "Reçoit le selfie de référence du participant (JPEG ou PNG via champ `file`).\n**Requiert** le jeton participant dans le header `X-Participant-Token` (ou `Authorization: Bearer <token>`) — même jeton que pour les opérations RGPD.\n1. Vérifie la qualité (taille >= 200x200, netteté >= 50, 1 seul visage centré).\n2. Extrait l'embedding 512 dimensions InsightFace.\n3. **Supprime immédiatement l'image brute (conformité RGPD)**.\n4. Déclenche le matching asynchrone sur l'événement (`?event={slug}`).",
+                "summary": "Uploader le selfie de référence",
+                "parameters": [
+                    {
+                        "in": "header",
+                        "name": "X-Participant-Token",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Jeton d'accès confidentiel du participant (`access_token`)",
+                        "required": true
+                    },
+                    {
+                        "in": "query",
+                        "name": "event",
+                        "schema": {
+                            "type": "string"
+                        },
+                        "description": "Slug de l'événement concerné pour le matching ciblé"
+                    },
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Participants"
+                ],
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SingleFileUploadRequest"
+                            }
+                        },
+                        "application/x-www-form-urlencoded": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SingleFileUploadRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "202": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "400": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            },
+            "delete": {
+                "operationId": "participants_face_reference_destroy",
+                "description": "Supprime l'embedding facial du participant et réinitialise son statut à 'no_reference'.\nAccessible par l'admin (JWT) ou le participant lui-même via header `X-Participant-Token` (jeton confidentiel `access_token` généré aléatoirement lors de l'enregistrement).",
+                "summary": "Supprimer la référence faciale (RGPD)",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "integer"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "Participants"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    },
+                    {
+                        "cookieAuth": []
+                    },
+                    {}
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    },
+                    "403": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "additionalProperties": {}
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "AdminPhotoList": {
+                "type": "object",
+                "description": "Représentation allégée d'une photo pour la liste d'administration.\nRetourne TOUTES les photos (publiques ET privées) afin de permettre à\nl'organisateur de retrouver et de réactiver une photo passée en privé.",
+                "properties": {
+                    "id": {
+                        "type": "integer"
+                    },
+                    "thumbnail": {
+                        "type": "string",
+                        "format": "uri",
+                        "readOnly": true,
+                        "description": "URL de la miniature"
+                    },
+                    "isPublic": {
+                        "type": "boolean"
+                    },
+                    "legend": {
+                        "type": "string"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "required": [
+                    "createdAt",
+                    "id",
+                    "isPublic",
+                    "legend",
+                    "thumbnail"
+                ]
+            },
+            "AuthMeResponse": {
+                "type": "object",
+                "description": "Schéma de la réponse de l'endpoint '/auth/me/'.\nPermet au frontend d'adapter dynamiquement la barre de navigation et les permissions\nselon le rôle retourné ('owner', 'manager', 'photographer' ou 'superuser').",
+                "properties": {
+                    "user": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/UserProfile"
+                            }
+                        ],
+                        "description": "Données de l'utilisateur connecté"
+                    },
+                    "organization": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/OrganizationSummary"
+                            }
+                        ],
+                        "nullable": true,
+                        "description": "Organisation à laquelle est rattaché l'utilisateur (None si superuser non affilié)"
+                    },
+                    "role": {
+                        "type": "string",
+                        "description": "Rôle de l'utilisateur : 'owner', 'manager', 'photographer' ou 'superuser'"
+                    }
+                },
+                "required": [
+                    "organization",
+                    "role",
+                    "user"
+                ]
+            },
+            "CreateClientAccountRequest": {
+                "type": "object",
+                "description": "Validation du formulaire de création de compte client par l'administrateur plateforme (Option B).\nGénère l'organisation et pré-crée le compte utilisateur sans déclencher d'envoi d'email automatique,\nlaissant l'administrateur copier le lien pour l'envoyer directement sur WhatsApp.",
+                "properties": {
+                    "organizationName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Nom commercial de l'organisation ou du studio",
+                        "maxLength": 200
+                    },
+                    "ownerEmail": {
+                        "type": "string",
+                        "format": "email",
+                        "minLength": 1,
+                        "description": "Adresse email unique du futur propriétaire"
+                    },
+                    "ownerFirstName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "default": "",
+                        "description": "Prénom du client",
+                        "maxLength": 150
+                    },
+                    "ownerLastName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "default": "",
+                        "description": "Nom de famille du client",
+                        "maxLength": 150
+                    },
+                    "ownerPhone": {
+                        "type": "string",
+                        "minLength": 1,
+                        "default": "",
+                        "description": "Numéro WhatsApp du client (+226...)",
+                        "maxLength": 35
+                    }
+                },
+                "required": [
+                    "organizationName",
+                    "ownerEmail"
+                ]
+            },
+            "CreateInvitationRequest": {
+                "type": "object",
+                "description": "Validation pour la génération d'un lien d'invitation à destination d'un nouveau collaborateur.\nRestreint les rôles attribuables par l'organisateur à 'manager' ou 'photographer'.",
+                "properties": {
+                    "role": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/RoleEnum"
+                            }
+                        ],
+                        "default": "manager",
+                        "description": "Rôle assigné au collaborateur invité\n\n* `manager` - manager\n* `photographer` - photographer"
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "minLength": 1,
+                        "default": "",
+                        "description": "Email optionnel pour référence"
+                    },
+                    "phone": {
+                        "type": "string",
+                        "minLength": 1,
+                        "default": "",
+                        "description": "Numéro WhatsApp optionnel",
+                        "maxLength": 35
+                    }
+                }
+            },
+            "CustomTokenObtainPair": {
+                "type": "object",
+                "description": "Sérialiseur de jeton JWT acceptant l'email comme identifiant de connexion.\n\nPourquoi cette surcharge :\nPar défaut, SimpleJWT n'accepte que le champ 'username'. En rendant 'username'\nfacultatif et en autorisant 'email', nous offrons une expérience de connexion moderne\nsans modifier le modèle utilisateur natif de Django.",
+                "properties": {
+                    "email": {
+                        "type": "string",
+                        "format": "email"
+                    }
+                }
+            },
+            "CustomTokenObtainPairRequest": {
+                "type": "object",
+                "description": "Sérialiseur de jeton JWT acceptant l'email comme identifiant de connexion.\n\nPourquoi cette surcharge :\nPar défaut, SimpleJWT n'accepte que le champ 'username'. En rendant 'username'\nfacultatif et en autorisant 'email', nous offrons une expérience de connexion moderne\nsans modifier le modèle utilisateur natif de Django.",
+                "properties": {
+                    "username": {
+                        "type": "string",
+                        "writeOnly": true,
+                        "minLength": 1
+                    },
+                    "password": {
+                        "type": "string",
+                        "writeOnly": true,
+                        "minLength": 1
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "minLength": 1
+                    }
+                },
+                "required": [
+                    "password"
+                ]
+            },
+            "EventCreateRequest": {
+                "type": "object",
+                "description": "Validation pour la création d'un événement par un 'owner' ou 'manager' de l'organisation.\nApplique des valeurs par défaut sécurisées (statut 'traitement' pour masquer l'événement\ntant que les photos ne sont pas prêtes).",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Titre officiel de l'événement",
+                        "maxLength": 200
+                    },
+                    "slug": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 50,
+                        "pattern": "^[-a-zA-Z0-9_]+$"
+                    },
+                    "tagline": {
+                        "type": "string",
+                        "minLength": 1,
+                        "default": "",
+                        "description": "Slogan ou sous-titre d'accroche",
+                        "maxLength": 300
+                    },
+                    "description": {
+                        "type": "string",
+                        "minLength": 1,
+                        "default": "",
+                        "description": "Présentation détaillée de la cérémonie ou du projet"
+                    },
+                    "city": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Ville de l'événement (ex: Ouagadougou, Bobo-Dioulasso)",
+                        "maxLength": 100
+                    },
+                    "venue": {
+                        "type": "string",
+                        "default": "",
+                        "description": "Lieu précis (salle, hôtel, domaine)",
+                        "maxLength": 200
+                    },
+                    "date": {
+                        "type": "string",
+                        "format": "date",
+                        "description": "Date de déroulement de l'événement"
+                    },
+                    "status": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/EventStatusEnum"
+                            }
+                        ],
+                        "default": "traitement",
+                        "description": "Statut de publication\n\n* `en_ligne` - En ligne\n* `traitement` - Traitement\n* `archive` - Archive"
+                    },
+                    "accent_color": {
+                        "type": "string",
+                        "minLength": 1,
+                        "default": "oklch(0.578 0.221 27.5)",
+                        "maxLength": 100
+                    },
+                    "accent_text_color": {
+                        "type": "string",
+                        "minLength": 1,
+                        "default": "oklch(0.99 0 0)",
+                        "maxLength": 100
+                    },
+                    "organizer_name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "default": "",
+                        "maxLength": 200
+                    },
+                    "organizer_about": {
+                        "type": "string"
+                    },
+                    "organizer_website": {
+                        "type": "string",
+                        "format": "uri",
+                        "nullable": true,
+                        "maxLength": 200
+                    },
+                    "organizer_phone": {
+                        "type": "string",
+                        "nullable": true,
+                        "maxLength": 30
+                    },
+                    "highlights": {}
+                },
+                "required": [
+                    "city",
+                    "date",
+                    "name"
+                ]
+            },
+            "EventDetail": {
+                "type": "object",
+                "description": "Sérialiseur détaillé pour la consultation d'un événement spécifique.\nHérite de EventListSerializer en chargeant cette fois la galerie réelle de photos publiques.",
+                "properties": {
+                    "slug": {
+                        "type": "string",
+                        "maxLength": 50,
+                        "pattern": "^[-a-zA-Z0-9_]+$"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Titre officiel de l'événement",
+                        "maxLength": 200
+                    },
+                    "tagline": {
+                        "type": "string",
+                        "description": "Slogan ou sous-titre d'accroche",
+                        "maxLength": 300
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Présentation détaillée de la cérémonie ou du projet"
+                    },
+                    "logoUrl": {
+                        "type": "string",
+                        "format": "uri",
+                        "readOnly": true
+                    },
+                    "city": {
+                        "type": "string",
+                        "description": "Ville de l'événement (ex: Ouagadougou, Bobo-Dioulasso)",
+                        "maxLength": 100
+                    },
+                    "venue": {
+                        "type": "string",
+                        "description": "Lieu précis (salle, hôtel, domaine)",
+                        "maxLength": 200
+                    },
+                    "date": {
+                        "type": "string",
+                        "format": "date",
+                        "description": "Date de déroulement de l'événement"
+                    },
+                    "dateLabel": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "status": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/EventStatusEnum"
+                            }
+                        ],
+                        "description": "Statut de publication\n\n* `en_ligne` - En ligne\n* `traitement` - Traitement\n* `archive` - Archive"
+                    },
+                    "cover": {
+                        "type": "string",
+                        "format": "uri",
+                        "readOnly": true
+                    },
+                    "theme": {
+                        "type": "object",
+                        "additionalProperties": {},
+                        "description": "Expose les variables CSS de couleurs pour l'habillage dynamique de la page événement.",
+                        "readOnly": true
+                    },
+                    "organizer": {
+                        "type": "object",
+                        "additionalProperties": {},
+                        "description": "Structure les métadonnées de l'organisateur hôte de l'événement.",
+                        "readOnly": true
+                    },
+                    "highlights": {},
+                    "photos": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PhotoItem"
+                        },
+                        "readOnly": true
+                    },
+                    "video": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/VideoItem"
+                            }
+                        ],
+                        "readOnly": true
+                    },
+                    "participants": {
+                        "type": "integer",
+                        "description": "Décompte des participants uniques ayant au moins une photo matchée.",
+                        "readOnly": true
+                    },
+                    "photosCount": {
+                        "type": "integer",
+                        "description": "Nombre total de photos publiées pour cet événement.",
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "city",
+                    "cover",
+                    "date",
+                    "dateLabel",
+                    "description",
+                    "logoUrl",
+                    "name",
+                    "organizer",
+                    "participants",
+                    "photos",
+                    "photosCount",
+                    "slug",
+                    "tagline",
+                    "theme",
+                    "video"
+                ]
+            },
+            "EventList": {
+                "type": "object",
+                "description": "Sérialiseur optimisé pour l'affichage en liste (Catalogue public ou Dashboard admin).\n\nOptimisation clé :\nNe charge pas la collection complète des photos (laisse le champ 'photos' vide) afin de ne pas\ntélécharger des milliers d'objets en mémoire lors du listing. Les décomptes sont pré-calculés\nvia les annotations ORM ('annotated_photos_count', 'annotated_participants_count') pour éliminer\nles requêtes SQL redondantes (problème N+1).",
+                "properties": {
+                    "slug": {
+                        "type": "string",
+                        "maxLength": 50,
+                        "pattern": "^[-a-zA-Z0-9_]+$"
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Titre officiel de l'événement",
+                        "maxLength": 200
+                    },
+                    "tagline": {
+                        "type": "string",
+                        "description": "Slogan ou sous-titre d'accroche",
+                        "maxLength": 300
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Présentation détaillée de la cérémonie ou du projet"
+                    },
+                    "logoUrl": {
+                        "type": "string",
+                        "format": "uri",
+                        "readOnly": true
+                    },
+                    "city": {
+                        "type": "string",
+                        "description": "Ville de l'événement (ex: Ouagadougou, Bobo-Dioulasso)",
+                        "maxLength": 100
+                    },
+                    "venue": {
+                        "type": "string",
+                        "description": "Lieu précis (salle, hôtel, domaine)",
+                        "maxLength": 200
+                    },
+                    "date": {
+                        "type": "string",
+                        "format": "date",
+                        "description": "Date de déroulement de l'événement"
+                    },
+                    "dateLabel": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "status": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/EventStatusEnum"
+                            }
+                        ],
+                        "description": "Statut de publication\n\n* `en_ligne` - En ligne\n* `traitement` - Traitement\n* `archive` - Archive"
+                    },
+                    "cover": {
+                        "type": "string",
+                        "format": "uri",
+                        "readOnly": true
+                    },
+                    "theme": {
+                        "type": "object",
+                        "additionalProperties": {},
+                        "description": "Expose les variables CSS de couleurs pour l'habillage dynamique de la page événement.",
+                        "readOnly": true
+                    },
+                    "organizer": {
+                        "type": "object",
+                        "additionalProperties": {},
+                        "description": "Structure les métadonnées de l'organisateur hôte de l'événement.",
+                        "readOnly": true
+                    },
+                    "highlights": {},
+                    "photos": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/PhotoItem"
+                        },
+                        "readOnly": true
+                    },
+                    "video": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/VideoItem"
+                            }
+                        ],
+                        "readOnly": true
+                    },
+                    "participants": {
+                        "type": "integer",
+                        "description": "Décompte des participants uniques ayant au moins une photo matchée.",
+                        "readOnly": true
+                    },
+                    "photosCount": {
+                        "type": "integer",
+                        "description": "Nombre total de photos publiées pour cet événement.",
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "city",
+                    "cover",
+                    "date",
+                    "dateLabel",
+                    "description",
+                    "logoUrl",
+                    "name",
+                    "organizer",
+                    "participants",
+                    "photos",
+                    "photosCount",
+                    "slug",
+                    "tagline",
+                    "theme",
+                    "video"
+                ]
+            },
+            "EventPatchStatusEnum": {
+                "enum": [
+                    "en_ligne",
+                    "traitement",
+                    "archive"
+                ],
+                "type": "string",
+                "description": "* `en_ligne` - en_ligne\n* `traitement` - traitement\n* `archive` - archive"
+            },
+            "EventStatusEnum": {
+                "enum": [
+                    "en_ligne",
+                    "traitement",
+                    "archive"
+                ],
+                "type": "string",
+                "description": "* `en_ligne` - En ligne\n* `traitement` - Traitement\n* `archive` - Archive"
+            },
+            "MultiFileUploadRequest": {
+                "type": "object",
+                "description": "Validation pour le téléversement simultané d'une série de photos (champ 'files').\nPermet aux photographes d'envoyer des lots complets de prise de vue en une seule requête HTTP.",
+                "properties": {
+                    "files": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "format": "binary"
+                        },
+                        "description": "Sélection de photos multiples à téléverser et soumettre au moteur IA"
+                    }
+                },
+                "required": [
+                    "files"
+                ]
+            },
+            "MyPhotosResponse": {
+                "type": "object",
+                "description": "Schéma de la réponse retournée au participant lors de sa recherche faciale.\n- 'status' : État d'avancement ('no_reference', 'pending', 'ready')\n- 'photos' : Liste des fiches photos matchées avec URL et légende.",
+                "properties": {
+                    "status": {
+                        "allOf": [
+                            {
+                                "$ref": "#/components/schemas/MyPhotosResponseStatusEnum"
+                            }
+                        ],
+                        "description": "État du matching biométrique\n\n* `no_reference` - no_reference\n* `pending` - pending\n* `ready` - ready"
+                    },
+                    "photos": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": {}
+                        },
+                        "description": "Collection des photos reconnues pour ce participant"
+                    }
+                },
+                "required": [
+                    "photos",
+                    "status"
+                ]
+            },
+            "MyPhotosResponseStatusEnum": {
+                "enum": [
+                    "no_reference",
+                    "pending",
+                    "ready"
+                ],
+                "type": "string",
+                "description": "* `no_reference` - no_reference\n* `pending` - pending\n* `ready` - ready"
+            },
+            "OrganizationSummary": {
+                "type": "object",
+                "description": "Sérialiseur concis présentant la fiche d'une organisation.\nUtilisé dans les réponses de profil pour identifier l'espace de travail actif du client.",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "readOnly": true
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "Nom commercial de l'organisation ou de l'agence photo",
+                        "maxLength": 200
+                    },
+                    "slug": {
+                        "type": "string",
+                        "maxLength": 220,
+                        "pattern": "^[-a-zA-Z0-9_]+$"
+                    },
+                    "description": {
+                        "type": "string"
+                    },
+                    "website": {
+                        "type": "string",
+                        "format": "uri",
+                        "nullable": true,
+                        "maxLength": 200
+                    },
+                    "phone": {
+                        "type": "string",
+                        "maxLength": 35
+                    },
+                    "is_active": {
+                        "type": "boolean",
+                        "description": "Accès actif à la plateforme (désactivable par l'administrateur système)"
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "created_at",
+                    "id",
+                    "name",
+                    "slug"
+                ]
+            },
+            "Participant": {
+                "type": "object",
+                "description": "Sérialiseur d'inscription et de consultation du profil d'un participant.",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "readOnly": true
+                    },
+                    "firstName": {
+                        "type": "string",
+                        "description": "Prénom de l'usager"
+                    },
+                    "lastName": {
+                        "type": "string",
+                        "description": "Nom de famille de l'usager"
+                    },
+                    "phone": {
+                        "type": "string",
+                        "description": "Numéro WhatsApp normalisé E.164",
+                        "maxLength": 30
+                    },
+                    "matchStatus": {
+                        "type": "string",
+                        "readOnly": true,
+                        "description": "Statut d'avancement du matching"
+                    },
+                    "accessToken": {
+                        "type": "string",
+                        "readOnly": true,
+                        "description": "Jeton de session secret pour accès aux photos et gestion RGPD"
+                    }
+                },
+                "required": [
+                    "accessToken",
+                    "firstName",
+                    "id",
+                    "lastName",
+                    "matchStatus",
+                    "phone"
+                ]
+            },
+            "ParticipantRequest": {
+                "type": "object",
+                "description": "Sérialiseur d'inscription et de consultation du profil d'un participant.",
+                "properties": {
+                    "firstName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Prénom de l'usager"
+                    },
+                    "lastName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Nom de famille de l'usager"
+                    },
+                    "phone": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Numéro WhatsApp normalisé E.164",
+                        "maxLength": 30
+                    }
+                },
+                "required": [
+                    "firstName",
+                    "lastName",
+                    "phone"
+                ]
+            },
+            "PatchedEventPatchRequest": {
+                "type": "object",
+                "description": "Validation pour la mise à jour partielle (PATCH) d'un événement par son organisateur.\nTous les champs sont optionnels : permet de modifier uniquement la date, le statut ou le nom.",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Nom de l'événement"
+                    },
+                    "tagline": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Sous-titre d'accroche"
+                    },
+                    "description": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Description de l'événement"
+                    },
+                    "city": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Ville de l'événement"
+                    },
+                    "venue": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Lieu de réception"
+                    },
+                    "date": {
+                        "type": "string",
+                        "format": "date",
+                        "description": "Date de l'événement (YYYY-MM-DD)"
+                    },
+                    "status": {
+                        "$ref": "#/components/schemas/EventPatchStatusEnum"
+                    },
+                    "accent_color": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Couleur accent (ex: oklch(...))"
+                    },
+                    "accent_text_color": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Couleur texte accent"
+                    },
+                    "organizer_name": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "organizer_about": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "organizer_website": {
+                        "type": "string",
+                        "format": "uri",
+                        "minLength": 1
+                    },
+                    "organizer_phone": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "highlights": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "minLength": 1
+                        }
+                    }
+                }
+            },
+            "PatchedPhotoPatchRequest": {
+                "type": "object",
+                "description": "Validation pour la modification d'une photo (visibilité publique / légende).",
+                "properties": {
+                    "isPublic": {
+                        "type": "boolean",
+                        "description": "Rendre visible ou masquer dans la galerie publique"
+                    },
+                    "legend": {
+                        "type": "string",
+                        "description": "Légende de la photo",
+                        "maxLength": 200
+                    }
+                }
+            },
+            "PhotoItem": {
+                "type": "object",
+                "description": "Sérialiseur d'une photo individuelle destinée à la galerie.\nRésout l'URL absolue complète en préfixant le protocole et le domaine (build_absolute_uri).",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "src": {
+                        "type": "string",
+                        "format": "uri",
+                        "readOnly": true
+                    },
+                    "legend": {
+                        "type": "string",
+                        "description": "Légende ou description optionnelle",
+                        "maxLength": 200
+                    },
+                    "isPublic": {
+                        "type": "boolean"
+                    }
+                },
+                "required": [
+                    "id",
+                    "isPublic",
+                    "src"
+                ]
+            },
+            "RoleEnum": {
+                "enum": [
+                    "manager",
+                    "photographer"
+                ],
+                "type": "string",
+                "description": "* `manager` - manager\n* `photographer` - photographer"
+            },
+            "SetPasswordFromTokenRequest": {
+                "type": "object",
+                "description": "Sérialiseur consommant le token d'invitation pour activer le compte et fixer le mot de passe.\nImpose une longueur minimale de 8 caractères pour garantir la sécurité des comptes.",
+                "properties": {
+                    "token": {
+                        "type": "string",
+                        "minLength": 1,
+                        "description": "Jeton unique d'invitation reçu dans l'URL WhatsApp"
+                    },
+                    "password": {
+                        "type": "string",
+                        "writeOnly": true,
+                        "minLength": 8,
+                        "description": "Nouveau mot de passe sécurisé (min. 8 car.)"
+                    },
+                    "firstName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "default": "",
+                        "description": "Prénom à renseigner ou corriger",
+                        "maxLength": 150
+                    },
+                    "lastName": {
+                        "type": "string",
+                        "minLength": 1,
+                        "default": "",
+                        "description": "Nom à renseigner ou corriger",
+                        "maxLength": 150
+                    }
+                },
+                "required": [
+                    "password",
+                    "token"
+                ]
+            },
+            "SingleFileUploadRequest": {
+                "type": "object",
+                "description": "Validation pour le téléversement d'un fichier binaire unique (champ 'file').\nUtilisé notamment pour le logo de l'événement et les selfies de référence.",
+                "properties": {
+                    "file": {
+                        "type": "string",
+                        "format": "binary",
+                        "description": "Fichier image source (JPEG, PNG ou WEBP)"
+                    }
+                },
+                "required": [
+                    "file"
+                ]
+            },
+            "TeamMember": {
+                "type": "object",
+                "description": "Représentation détaillée d'un collaborateur au sein d'une organisation.\nAplatit la relation OrganizationMembership pour faciliter l'affichage dans un tableau React.",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "readOnly": true
+                    },
+                    "userId": {
+                        "type": "integer"
+                    },
+                    "username": {
+                        "type": "string"
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email"
+                    },
+                    "firstName": {
+                        "type": "string"
+                    },
+                    "lastName": {
+                        "type": "string"
+                    },
+                    "role": {
+                        "type": "string"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "format": "date-time"
+                    }
+                },
+                "required": [
+                    "createdAt",
+                    "email",
+                    "firstName",
+                    "id",
+                    "lastName",
+                    "role",
+                    "userId",
+                    "username"
+                ]
+            },
+            "TokenRefresh": {
+                "type": "object",
+                "properties": {
+                    "access": {
+                        "type": "string",
+                        "readOnly": true
+                    },
+                    "refresh": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "access",
+                    "refresh"
+                ]
+            },
+            "TokenRefreshRequest": {
+                "type": "object",
+                "properties": {
+                    "refresh": {
+                        "type": "string",
+                        "minLength": 1
+                    }
+                },
+                "required": [
+                    "refresh"
+                ]
+            },
+            "UserProfile": {
+                "type": "object",
+                "description": "Sérialiseur du profil utilisateur exposant les champs en camelCase\nafin de respecter les conventions de nommage des frameworks frontend (React / Angular / Vue).",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "readOnly": true
+                    },
+                    "username": {
+                        "type": "string",
+                        "title": "Nom d’utilisateur",
+                        "description": "Requis. 150 caractères maximum. Uniquement des lettres, nombres et les caractères « @ », « . », « + », « - » et « _ ».",
+                        "pattern": "^[\\w.@+-]+$",
+                        "maxLength": 150
+                    },
+                    "email": {
+                        "type": "string",
+                        "format": "email",
+                        "title": "Adresse électronique",
+                        "maxLength": 254
+                    },
+                    "firstName": {
+                        "type": "string"
+                    },
+                    "lastName": {
+                        "type": "string"
+                    },
+                    "is_staff": {
+                        "type": "boolean",
+                        "title": "Statut équipe",
+                        "description": "Précise si l’utilisateur peut se connecter à ce site d'administration."
+                    },
+                    "is_superuser": {
+                        "type": "boolean",
+                        "title": "Statut super-utilisateur",
+                        "description": "Précise que l’utilisateur possède toutes les permissions sans les assigner explicitement."
+                    }
+                },
+                "required": [
+                    "firstName",
+                    "id",
+                    "lastName",
+                    "username"
+                ]
+            },
+            "VideoItem": {
+                "type": "object",
+                "description": "Sérialiseur de la vidéo promotionnelle ou récapitulative de l'événement.",
+                "properties": {
+                    "src": {
+                        "type": "string",
+                        "format": "uri",
+                        "readOnly": true
+                    },
+                    "title": {
+                        "type": "string",
+                        "description": "Titre de la vidéo",
+                        "maxLength": 200
+                    },
+                    "duration": {
+                        "type": "string",
+                        "description": "Durée lisible (ex: '3:45')",
+                        "maxLength": 20
+                    },
+                    "sizeLabel": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "duration",
+                    "sizeLabel",
+                    "src",
+                    "title"
+                ]
+            }
+        },
+        "securitySchemes": {
+            "cookieAuth": {
+                "type": "apiKey",
+                "in": "cookie",
+                "name": "sessionid"
+            },
+            "jwtAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Authentification",
+            "description": "Connexion et rafraîchissement des tokens JWT"
+        },
+        {
+            "name": "Événements",
+            "description": "Consultation publique des événements et galeries"
+        },
+        {
+            "name": "Participants",
+            "description": "Enregistrement, selfies de référence et RGPD"
+        },
+        {
+            "name": "Administration",
+            "description": "Statistiques, upload médias et gestion des organisateurs"
+        }
+    ]
+}

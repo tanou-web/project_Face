@@ -9,7 +9,7 @@ Ce module gère le cycle de vie complet des invités :
 """
 
 import logging
-import hashlib
+import secrets
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -35,16 +35,26 @@ def _check_participant_ownership(request, participant: Participant) -> bool:
     Vérifie la légitimité de l'usager à modifier ou supprimer ses données personnelles.
 
     Mécanisme d'autorisation RGPD :
-    Les participants n'ayant pas de mot de passe à mémoriser pour simplifier leur parcours,
-    le client frontend transmet un jeton de preuve dans l'en-tête HTTP 'X-Participant-Token'
-    (calculé par empreinte SHA-256 de son numéro de téléphone).
+    Le participant s'authentifie grâce à son jeton secret 'access_token' généré aléatoirement
+    (transmis dans l'en-tête HTTP 'X-Participant-Token', 'Authorization: Bearer <token>', ou '?token=').
     Les administrateurs système (is_staff) sont également autorisés à effectuer ces opérations.
     """
     if request.user and request.user.is_authenticated and request.user.is_staff:
         return True
-    token = request.headers.get("X-Participant-Token", "")
-    expected = hashlib.sha256(participant.phone.encode()).hexdigest()
-    return token == expected
+
+    token = (
+        request.headers.get("X-Participant-Token")
+        or request.query_params.get("token")
+    )
+    if not token:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header.split(" ", 1)[1].strip()
+
+    if not token or not participant.access_token:
+        return False
+
+    return secrets.compare_digest(token, participant.access_token)
 
 
 class ParticipantView(APIView):
@@ -109,6 +119,8 @@ class ParticipantView(APIView):
             if last_name and participant.last_name != last_name:
                 participant.last_name = last_name
                 updated = True
+            if not participant.access_token:
+                updated = True
             if updated:
                 participant.save()
 
@@ -134,6 +146,8 @@ class FaceReferenceView(APIView):
         summary="Uploader le selfie de référence",
         description=(
             "Reçoit le selfie de référence du participant (JPEG ou PNG via champ `file`).\n"
+            "**Requiert** le jeton participant dans le header `X-Participant-Token` "
+            "(ou `Authorization: Bearer <token>`) — même jeton que pour les opérations RGPD.\n"
             "1. Vérifie la qualité (taille >= 200x200, netteté >= 50, 1 seul visage centré).\n"
             "2. Extrait l'embedding 512 dimensions InsightFace.\n"
             "3. **Supprime immédiatement l'image brute (conformité RGPD)**.\n"
@@ -141,6 +155,13 @@ class FaceReferenceView(APIView):
         ),
         request=SingleFileUploadSerializer,
         parameters=[
+            OpenApiParameter(
+                name="X-Participant-Token",
+                type=OpenApiTypes.STR,
+                location=OpenApiParameter.HEADER,
+                required=True,
+                description="Jeton d'accès confidentiel du participant (`access_token`)"
+            ),
             OpenApiParameter(
                 name="event",
                 type=OpenApiTypes.STR,
@@ -152,10 +173,18 @@ class FaceReferenceView(APIView):
         responses={
             202: OpenApiTypes.OBJECT,
             400: OpenApiTypes.OBJECT,
+            403: OpenApiTypes.OBJECT,
         }
     )
     def post(self, request, pk):
         participant = get_object_or_404(Participant, pk=pk)
+
+        # Vérification du jeton participant (obligatoire pour POST, conformité RGPD)
+        if not _check_participant_ownership(request, participant):
+            return Response(
+                {"error": "Accès refusé. Token RGPD ou authentification admin requis."},
+                status=status.HTTP_403_FORBIDDEN
+            )
         file = request.FILES.get("file")
         if not file:
             return Response({"error": "Aucun fichier image fourni (champ 'file')."}, status=status.HTTP_400_BAD_REQUEST)
@@ -217,7 +246,7 @@ class FaceReferenceView(APIView):
         description=(
             "Supprime l'embedding facial du participant et réinitialise son statut à 'no_reference'.\n"
             "Accessible par l'admin (JWT) ou le participant lui-même via header `X-Participant-Token` "
-            "(SHA256 de son numéro de téléphone)."
+            "(jeton confidentiel `access_token` généré aléatoirement lors de l'enregistrement)."
         ),
         responses={200: OpenApiTypes.OBJECT, 403: OpenApiTypes.OBJECT}
     )
@@ -248,7 +277,7 @@ class ParticipantDeleteView(APIView):
         description=(
             "Supprime définitivement le participant ainsi que toutes ses données et associations.\n"
             "Accessible par l'admin (JWT) ou le participant lui-même via header `X-Participant-Token` "
-            "(SHA256 de son numéro de téléphone)."
+            "(jeton confidentiel `access_token` généré aléatoirement lors de l'enregistrement)."
         ),
         responses={200: OpenApiTypes.OBJECT, 403: OpenApiTypes.OBJECT}
     )
