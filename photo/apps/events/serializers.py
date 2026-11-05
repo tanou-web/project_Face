@@ -215,6 +215,7 @@ class EventCreateSerializer(serializers.ModelSerializer):
     Validation pour la création d'un événement par un 'owner' ou 'manager' de l'organisation.
     Applique des valeurs par défaut sécurisées (statut 'traitement' pour masquer l'événement
     tant que les photos ne sont pas prêtes).
+    Le slug est optionnel : s'il n'est pas fourni, il sera généré automatiquement.
     """
     class Meta:
         model = Event
@@ -225,7 +226,7 @@ class EventCreateSerializer(serializers.ModelSerializer):
             "organizer_phone", "highlights"
         ]
         extra_kwargs = {
-            "slug": {"required": False},
+            "slug": {"required": False, "allow_blank": True},
             "tagline": {"required": False, "default": ""},
             "description": {"required": False, "default": ""},
             "venue": {"required": False, "default": ""},

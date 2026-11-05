@@ -9,6 +9,9 @@ Ce module définit l'entité centrale 'Event' :
 """
 
 from django.db import models
+from django.utils.text import slugify
+import random
+import string
 
 
 class Event(models.Model):
@@ -36,7 +39,7 @@ class Event(models.Model):
         help_text="Organisation propriétaire de cet événement (isolation multi-tenant)"
     )
     # Identifiant textuel unique pour l'URL publique (ex: /events/mariage-aminata-ibrahim/)
-    slug = models.SlugField(unique=True, db_index=True)
+    slug = models.SlugField(unique=True, db_index=True, blank=True)
     name = models.CharField(max_length=200, help_text="Titre officiel de l'événement")
     tagline = models.CharField(max_length=300, help_text="Slogan ou sous-titre d'accroche")
     description = models.TextField(help_text="Présentation détaillée de la cérémonie ou du projet")
@@ -76,3 +79,29 @@ class Event(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        """
+        Génère automatiquement un slug unique basé sur le nom si non fourni.
+        Si doublon, ajoute un suffixe aléatoire.
+        """
+        if not self.slug:
+            base_slug = slugify(self.name)
+            slug = base_slug
+            counter = 1
+            
+            # Vérifier si le slug existe déjà
+            while Event.objects.filter(slug=slug).exists():
+                # Ajouter un suffixe aléatoire
+                suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+                slug = f"{base_slug}-{suffix}"
+                counter += 1
+                
+                # Sécurité : éviter une boucle infinie
+                if counter > 100:
+                    slug = f"{base_slug}-{random.randint(10000, 99999)}"
+                    break
+            
+            self.slug = slug
+        
+        super().save(*args, **kwargs)
