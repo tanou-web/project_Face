@@ -144,6 +144,10 @@ urlpatterns = [
 ]
 
 # En mode DEBUG local, Django prend en charge le service direct des fichiers médias uploadés.
-# En production, ce rôle est dévolu à WhiteNoise (statiques) ou à un bucket/disque persistant.
+# En production (DEBUG=False), on doit également servir les médias.
+# Solution temporaire pour Render gratuit : servir via Django/WhiteNoise (moins performant que S3/Cloudinary)
 if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+else:
+    # En production, servir les médias également (nécessaire sur Render sans stockage externe)
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -1,0 +1,13 @@
+{
+  "slug": "test-evenement-2026",
+  "name": "Test Événement",
+  "tagline": "Un événement de test",
+  "description": "Description de test pour vérifier la création",
+  "city": "Ouagadougou",
+  "venue": "Centre de Conférences",
+  "date": "2026-12-20",
+  "status": "traitement",
+  "organizer_name": "Test Organisateur",
+  "organizer_phone": "+22670123456",
+  "highlights": ["Test 1", "Test 2"]
+}

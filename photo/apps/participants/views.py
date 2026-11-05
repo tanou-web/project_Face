@@ -82,9 +82,9 @@ class ParticipantView(APIView):
         }
     )
     def post(self, request):
-        first_name = request.data.get("firstName", "").strip()
-        last_name = request.data.get("lastName", "").strip()
-        phone_raw = request.data.get("phone", "").strip()
+        first_name = (request.data.get("firstName") or "").strip()
+        last_name = (request.data.get("lastName") or "").strip()
+        phone_raw = (request.data.get("phone") or "").strip()
 
         if not phone_raw:
             return Response(

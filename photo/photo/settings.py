@@ -95,6 +95,10 @@ X_FRAME_OPTIONS = 'DENY'
 SESSION_COOKIE_HTTPONLY = True     # Empêche l'accès aux cookies de session via document.cookie en JavaScript
 CSRF_COOKIE_HTTPONLY = True
 
+# Configuration pour les proxies inverses (Render, Cloudflare)
+# Indique à Django de faire confiance au header X-Forwarded-Proto pour détecter HTTPS
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 ROOT_URLCONF = 'photo.urls'
 
 TEMPLATES = [
@@ -179,6 +183,14 @@ STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# En production sans DEBUG, Django ne sert pas les médias automatiquement.
+# Solution temporaire pour Render gratuit : servir via WhiteNoise (moins performant que S3/Cloudinary)
+# Pour un usage production avec beaucoup de médias, migrez vers Cloudinary ou AWS S3.
+if not DEBUG:
+    # Autoriser WhiteNoise à servir les médias en plus des statiques
+    WHITENOISE_AUTOREFRESH = True
+    WHITENOISE_USE_FINDERS = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

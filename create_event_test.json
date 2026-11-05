@@ -1,0 +1,11 @@
+{
+  "slug": "test-postman-12345",
+  "name": "Test Postman Création",
+  "tagline": "Un événement test",
+  "description": "Ceci est un test de création depuis Postman",
+  "city": "Ouagadougou",
+  "venue": "Centre de Conférences",
+  "date": "2027-01-15",
+  "status": "traitement",
+  "organizer_name": "Test Organisateur"
+}

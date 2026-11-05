@@ -41,5 +41,10 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             user = User.objects.filter(email__iexact=email).first()
             if user:
                 attrs['username'] = user.username
+            else:
+                # Email inconnu : lever une erreur explicite au lieu de laisser KeyError
+                raise serializers.ValidationError(
+                    {"email": "Aucun compte n'est associé à cette adresse email."}
+                )
 
         return super().validate(attrs)

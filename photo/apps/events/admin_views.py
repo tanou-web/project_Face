@@ -57,7 +57,14 @@ class AdminStatsView(APIView):
             downloads_count = PhotoMatch.objects.count()
         else:
             # Isolation stricte au périmètre de l'organisation connectée
-            org = user.organization
+            org = get_user_organization(user)
+            if not org:
+                return Response({
+                    "events": 0,
+                    "photos": 0,
+                    "participants": 0,
+                    "downloads": 0,
+                })
             events_qs = Event.objects.filter(organization=org)
             photos_qs = Photo.objects.filter(event__organization=org)
             participant_ids = PhotoMatch.objects.filter(
@@ -106,7 +113,8 @@ class AdminContactsView(APIView):
         if event_slug:
             # Filtrage par événement spécifique avec contrôle d'appartenance multi-tenant
             event = get_object_or_404(Event, slug=event_slug)
-            if not user.is_superuser and hasattr(user, "organization") and event.organization != user.organization:
+            org = get_user_organization(user)
+            if not user.is_superuser and org and event.organization != org:
                 return Response({"detail": "Accès refusé pour cet événement."}, status=status.HTTP_403_FORBIDDEN)
             participant_ids = PhotoMatch.objects.filter(photo__event=event).values_list("participant_id", flat=True).distinct()
             participants = Participant.objects.filter(id__in=participant_ids).order_by("-created_at")
@@ -116,7 +124,9 @@ class AdminContactsView(APIView):
             if user.is_superuser:
                 participants = Participant.objects.all().order_by("-created_at")
             else:
-                org = user.organization
+                org = get_user_organization(user)
+                if not org:
+                    return Response({"event": "Tous les événements", "participants": []})
                 participant_ids = PhotoMatch.objects.filter(
                     photo__event__organization=org
                 ).values_list("participant_id", flat=True).distinct()
@@ -162,7 +172,8 @@ class AdminLogoUploadView(APIView):
     def post(self, request, slug):
         event = get_object_or_404(Event, slug=slug)
         # Vérification d'autorisation : le membre doit appartenir à l'organisation de l'événement
-        is_owner = hasattr(request.user, "organization") and event.organization == request.user.organization
+        user_org = get_user_organization(request.user)
+        is_owner = user_org and event.organization == user_org
         if not (request.user.is_staff or is_owner):
             return Response({"detail": "Vous n'avez pas l'autorisation de modifier cet événement."}, status=status.HTTP_403_FORBIDDEN)
 
