@@ -167,6 +167,33 @@ paths:
                 additionalProperties: {}
           description: ''
   /admin/events/{slug}/media/:
+    get:
+      operationId: admin_events_media_list
+      description: |-
+        Retourne la liste intégrale des photos d'un événement, qu'elles soient publiques ou privées.
+        Indispensable pour l'organisateur qui souhaite retrouver et réactiver une photo passée en privé.
+        Chaque photo est représentée par : `id`, `thumbnail`, `isPublic`, `legend`, `createdAt`.
+      summary: Lister toutes les photos d'un événement (publiques + privées)
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - Administration
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminPhotoList'
+          description: ''
     post:
       operationId: admin_events_media_create
       description: |-
@@ -542,6 +569,33 @@ paths:
                 additionalProperties: {}
           description: ''
   /api/v1/admin/events/{slug}/media/:
+    get:
+      operationId: api_v1_admin_events_media_list
+      description: |-
+        Retourne la liste intégrale des photos d'un événement, qu'elles soient publiques ou privées.
+        Indispensable pour l'organisateur qui souhaite retrouver et réactiver une photo passée en privé.
+        Chaque photo est représentée par : `id`, `thumbnail`, `isPublic`, `legend`, `createdAt`.
+      summary: Lister toutes les photos d'un événement (publiques + privées)
+      parameters:
+      - in: path
+        name: slug
+        schema:
+          type: string
+        required: true
+      tags:
+      - Administration
+      security:
+      - jwtAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminPhotoList'
+          description: ''
     post:
       operationId: api_v1_admin_events_media_create
       description: |-
@@ -1165,12 +1219,19 @@ paths:
       operationId: api_v1_participants_face_reference_create
       description: |-
         Reçoit le selfie de référence du participant (JPEG ou PNG via champ `file`).
+        **Requiert** le jeton participant dans le header `X-Participant-Token` (ou `Authorization: Bearer <token>`) — même jeton que pour les opérations RGPD.
         1. Vérifie la qualité (taille >= 200x200, netteté >= 50, 1 seul visage centré).
         2. Extrait l'embedding 512 dimensions InsightFace.
         3. **Supprime immédiatement l'image brute (conformité RGPD)**.
         4. Déclenche le matching asynchrone sur l'événement (`?event={slug}`).
       summary: Uploader le selfie de référence
       parameters:
+      - in: header
+        name: X-Participant-Token
+        schema:
+          type: string
+        description: Jeton d'accès confidentiel du participant (`access_token`)
+        required: true
       - in: query
         name: event
         schema:
@@ -1205,6 +1266,13 @@ paths:
                 additionalProperties: {}
           description: ''
         '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '403':
           content:
             application/json:
               schema:
@@ -1647,12 +1715,19 @@ paths:
       operationId: participants_face_reference_create
       description: |-
         Reçoit le selfie de référence du participant (JPEG ou PNG via champ `file`).
+        **Requiert** le jeton participant dans le header `X-Participant-Token` (ou `Authorization: Bearer <token>`) — même jeton que pour les opérations RGPD.
         1. Vérifie la qualité (taille >= 200x200, netteté >= 50, 1 seul visage centré).
         2. Extrait l'embedding 512 dimensions InsightFace.
         3. **Supprime immédiatement l'image brute (conformité RGPD)**.
         4. Déclenche le matching asynchrone sur l'événement (`?event={slug}`).
       summary: Uploader le selfie de référence
       parameters:
+      - in: header
+        name: X-Participant-Token
+        schema:
+          type: string
+        description: Jeton d'accès confidentiel du participant (`access_token`)
+        required: true
       - in: query
         name: event
         schema:
@@ -1687,6 +1762,13 @@ paths:
                 additionalProperties: {}
           description: ''
         '400':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+        '403':
           content:
             application/json:
               schema:
@@ -1728,6 +1810,33 @@ paths:
           description: ''
 components:
   schemas:
+    AdminPhotoList:
+      type: object
+      description: |-
+        Représentation allégée d'une photo pour la liste d'administration.
+        Retourne TOUTES les photos (publiques ET privées) afin de permettre à
+        l'organisateur de retrouver et de réactiver une photo passée en privé.
+      properties:
+        id:
+          type: integer
+        thumbnail:
+          type: string
+          format: uri
+          readOnly: true
+          description: URL de la miniature
+        isPublic:
+          type: boolean
+        legend:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+      - createdAt
+      - id
+      - isPublic
+      - legend
+      - thumbnail
     AuthMeResponse:
       type: object
       description: |-
