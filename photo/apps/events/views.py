@@ -156,19 +156,30 @@ class EventDetailView(APIView):
                 {"detail": "Vous n'avez pas l'autorisation de modifier cet événement."},
                 status=status.HTTP_403_FORBIDDEN
             )
-        data = request.data
+        
+        # Validation des données avec le serializer
+        serializer = EventPatchSerializer(data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        validated_data = serializer.validated_data
+        
+        # Application des champs validés
         for field in [
             "name", "tagline", "description", "city", "venue",
             "date", "status", "accent_color", "accent_text_color",
             "organizer_name", "organizer_about", "organizer_website", "organizer_phone"
         ]:
-            if field in data:
-                setattr(event, field, data[field])
-        if "highlights" in data and isinstance(data["highlights"], list):
-            event.highlights = data["highlights"]
+            if field in validated_data:
+                setattr(event, field, validated_data[field])
+        
+        if "highlights" in validated_data:
+            event.highlights = validated_data["highlights"]
+        
         event.save()
-        serializer = EventDetailSerializer(event, context={"request": request})
-        return Response(serializer.data)
+        
+        response_serializer = EventDetailSerializer(event, context={"request": request})
+        return Response(response_serializer.data)
 
 
 class EventPhotosView(APIView):
