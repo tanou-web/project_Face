@@ -20,6 +20,9 @@ if [ -f "manage.py" ]; then
 
     echo "==> Injection des données de démonstration initiales (seed_data)..."
     python manage.py seed_data
+    
+    echo "==> Pré-téléchargement du modèle InsightFace (buffalo_l)..."
+    python download_insightface_model.py
 elif [ -f "photo/manage.py" ]; then
     echo "==> Collecte des fichiers statiques pour WhiteNoise..."
     python photo/manage.py collectstatic --noinput
@@ -29,5 +32,8 @@ elif [ -f "photo/manage.py" ]; then
 
     echo "==> Injection des données de démonstration initiales (seed_data)..."
     python photo/manage.py seed_data
+    
+    echo "==> Pré-téléchargement du modèle InsightFace (buffalo_l)..."
+    python photo/download_insightface_model.py
 fi
 echo "==> Build terminé avec succès !"
