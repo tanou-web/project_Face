@@ -220,7 +220,7 @@ CORS_ALLOWED_ORIGINS = list(set([
     "http://127.0.0.1:5174",
     "http://127.0.0.1:5175",
     # Production Frontend (Render)
-    "https://platforme-photo-scan.onrender.com",
+    "https://platforme-photo-scan.vercel.app/",
 ] + _extra_origins))
 CORS_ALLOW_CREDENTIALS = True  # Permet l'envoi de cookies et d'en-têtes d'autorisation sécurisés
 CORS_ALLOW_HEADERS = [
