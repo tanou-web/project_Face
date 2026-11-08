@@ -105,7 +105,7 @@ Running migrations:
 
 ```
 Key: FRONTEND_URL
-Value: https://platforme-photo-scan.onrender.com
+Value: https://platforme-photo-scan.vercel.app
 ```
 
 **Cliquer "Save Changes"** → Render redéploiera automatiquement
@@ -119,7 +119,7 @@ Assurez-vous que ces variables existent :
 ✅ DJANGO_DEBUG=False
 ✅ DJANGO_ALLOWED_HOSTS=photo-scan-api-9o78.onrender.com
 ✅ DATABASE_URL=postgresql://... (auto par Render PostgreSQL)
-✅ FRONTEND_URL=https://platforme-photo-scan.onrender.com (⚠️ À AJOUTER)
+✅ FRONTEND_URL=https://platforme-photo-scan.vercel.app (⚠️ À AJOUTER)
 ```
 
 ---
@@ -198,7 +198,7 @@ Content-Type: application/json
 
 Créez une invitation d'équipe et vérifiez que `setPasswordUrl` commence par :
 ```
-✅ https://platforme-photo-scan.onrender.com/auth/set-password?token=...
+✅ https://platforme-photo-scan.vercel.app/auth/set-password?token=...
 ❌ Pas http:// ni None
 ```
 
@@ -244,73 +244,41 @@ Dans les détails du bucket, copier l'**Endpoint URL** :
 https://xxxxxxxxxxxxx.r2.cloudflarestorage.com
 ```
 
-### 7.5 - Modifier requirements.txt
-
-Ajoutez dans `photo/requirements.txt` :
-
-```
-django-storages>=1.14
-boto3>=1.28
-```
-
-### 7.6 - Modifier settings.py
-
-Ajoutez à la fin de `photo/photo/settings.py` :
-
-```python
-# ==============================================================================
-# STOCKAGE PERMANENT DES MÉDIAS (Cloudflare R2)
-# ==============================================================================
-if os.environ.get('USE_R2', 'False').lower() == 'true':
-    # Configuration Cloudflare R2
-    AWS_ACCESS_KEY_ID = os.environ.get('R2_ACCESS_KEY_ID')
-    AWS_SECRET_ACCESS_KEY = os.environ.get('R2_SECRET_ACCESS_KEY')
-    AWS_STORAGE_BUCKET_NAME = os.environ.get('R2_BUCKET_NAME')
-    AWS_S3_ENDPOINT_URL = os.environ.get('R2_ENDPOINT_URL')
-    
-    AWS_S3_REGION_NAME = 'auto'
-    AWS_S3_SIGNATURE_VERSION = 's3v4'
-    AWS_S3_FILE_OVERWRITE = False
-    AWS_DEFAULT_ACL = None
-    AWS_S3_OBJECT_PARAMETERS = {
-        'CacheControl': 'max-age=86400',
-    }
-    
-    # Utiliser R2 pour les médias
-    DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
-    
-    # URL publique des médias
-    MEDIA_URL = f"{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/"
-```
-
-### 7.7 - Commit et Push
-
-```bash
-git add photo/requirements.txt photo/photo/settings.py
-git commit -m "feat: Configuration Cloudflare R2 pour stockage permanent des médias"
-git push origin main
-```
-
-### 7.8 - Ajouter Variables Render
+### 7.5 - Ajouter Variables Render
 
 Dans Render Dashboard → Environment :
 
 ```env
-USE_R2=True
 R2_ACCESS_KEY_ID=votre_access_key_id
 R2_SECRET_ACCESS_KEY=votre_secret_access_key
 R2_BUCKET_NAME=photo-scan-media
 R2_ENDPOINT_URL=https://xxxxx.r2.cloudflarestorage.com
+R2_PUBLIC_DOMAIN=media.votre-domaine.com
+CELERY_BROKER_URL=rediss://...
 ```
 
-**Save Changes** → Render redéploiera
+R2 est déjà configuré dans le code. `R2_PUBLIC_DOMAIN` est le domaine public du bucket,
+sans `https://` ni slash final. Ne placez pas les clés dans le dépôt.
 
-### 7.9 - Tester R2
+### 7.6 - Créer le worker Celery
 
-1. Uploadez une nouvelle photo
-2. Vérifiez que l'URL commence par R2
-3. Redéployez l'app
-4. Vérifiez que la photo est toujours accessible ✅
+Créer un service **Background Worker** Render distinct du serveur web, avec les mêmes
+variables d'environnement et commandes :
+
+```text
+Build command: cd photo && pip install -r requirements.txt
+Start command: cd photo && celery -A photo.celery:app worker --loglevel=INFO --concurrency=1
+```
+
+Le worker doit avoir assez de mémoire pour InsightFace; suivre son utilisation mémoire
+dans Render et augmenter son plan si nécessaire.
+
+### 7.7 - Tester R2 et l'indexation
+
+1. Uploadez une photo et vérifiez que la réponse indique `indexing: queued`.
+2. Vérifiez que l'URL de la photo et de la miniature utilise le domaine public R2.
+3. Vérifiez dans Render les logs du worker et la fin de l'indexation.
+4. Redéployez l'app puis confirmez que les photos restent accessibles.
 
 ---
 

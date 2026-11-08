@@ -17,17 +17,16 @@ from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAdminUser
 from rest_framework.parsers import MultiPartParser, FormParser
 from drf_spectacular.utils import extend_schema, OpenApiTypes
 
 from apps.events.models import Event
-from apps.media.models import Photo, FaceIndex
+from apps.media.models import Photo
 from apps.media.serializers import MultiFileUploadSerializer, PhotoPatchSerializer, AdminPhotoListSerializer
 from apps.media.validators import validate_uploaded_image
-from apps.participants.models import Participant
-from apps.faces.utils import extract_embeddings
-from apps.faces.tasks import match_participant_to_event
+from apps.faces.tasks import index_event_photos
 from apps.organizations.permissions import IsOrganizationMember, get_user_organization
 
 logger = logging.getLogger(__name__)
@@ -81,11 +80,15 @@ class AdminMediaUploadView(APIView):
             "Pour chaque fichier :\n"
             "1. Enregistre le média original.\n"
             "2. Crée la miniature Pillow (400x400 max) avec correction EXIF.\n"
-            "3. Détecte tous les visages et génère les embeddings 512D (`FaceIndex`).\n"
-            "4. Actualise automatiquement le matching pour les participants déjà inscrits."
+            "3. Met en file l'extraction des visages et des embeddings 512D (`FaceIndex`).\n"
+            "4. Actualise le matching en tâche de fond pour les participants déjà inscrits."
         ),
         request=MultiFileUploadSerializer,
-        responses={201: OpenApiTypes.OBJECT, 400: OpenApiTypes.OBJECT}
+        responses={
+            201: OpenApiTypes.OBJECT,
+            400: OpenApiTypes.OBJECT,
+            503: OpenApiTypes.OBJECT,
+        }
     )
     def post(self, request, slug):
         event = get_object_or_404(Event, slug=slug)
@@ -122,6 +125,10 @@ class AdminMediaUploadView(APIView):
             default_is_public = True
 
         processed_count = 0
+        processed_photo_ids = []
+        upload_errors = []
+        server_errors = []
+        indexing_errors = []
         for uploaded_file in files:
             try:
                 # 0. Validation stricte de sécurité (taille, extension, type MIME, intégrité Pillow)
@@ -140,37 +147,47 @@ class AdminMediaUploadView(APIView):
                 if thumb_content:
                     photo.thumbnail = thumb_content
                 photo.save()
-
-                # 3. Détection et extraction des visages par IA
-                try:
-                    if photo.file and os.path.exists(photo.file.path):
-                        face_results = extract_embeddings(photo.file.path)
-                        for face_data in face_results:
-                            FaceIndex.objects.create(
-                                photo=photo,
-                                embedding=face_data["embedding"],
-                                bbox=face_data.get("bbox"),
-                            )
-                except Exception as ex_face:
-                    logger.warning(f"Erreur d'indexation faciale sur photo {photo.id}: {ex_face}")
-
+                processed_photo_ids.append(photo.pk)
                 processed_count += 1
-            except Exception as e:
-                logger.error(f"Erreur lors du traitement du fichier {uploaded_file.name}: {e}")
+            except ValidationError as exc:
+                upload_errors.append({
+                    "file": uploaded_file.name,
+                    "error": str(exc.detail),
+                })
+            except Exception:
+                logger.exception("Erreur lors du traitement du fichier %s.", uploaded_file.name)
+                server_errors.append(uploaded_file.name)
+                upload_errors.append({
+                    "file": uploaded_file.name,
+                    "error": "Le fichier n'a pas pu être enregistré.",
+                })
 
-        # 4. Actualisation asynchrone du matching pour les participants déjà enregistrés
-        # Si de nouvelles photos viennent d'arriver, Celery recalcule les correspondances en tâche de fond.
-        if processed_count > 0:
-            existing_participants = Participant.objects.filter(face_reference__isnull=False)
-            for p in existing_participants:
-                try:
-                    # Envoi au worker Celery Redis en tâche de fond
-                    match_participant_to_event.delay(p.id, event.slug)
-                except Exception:
-                    # Fallback synchrone direct si le broker Celery n'est pas actif localement
-                    match_participant_to_event(p.id, event.slug)
+        if processed_photo_ids:
+            try:
+                index_event_photos.delay(event.slug, processed_photo_ids)
+            except Exception:
+                logger.exception(
+                    "Photos %s enregistrées, mais impossible de mettre leur indexation en file.",
+                    processed_photo_ids,
+                )
+                indexing_errors.append({
+                    "photoIds": processed_photo_ids,
+                    "error": "Photos enregistrées, mais indexation non planifiée. Vérifiez le worker Celery et Redis.",
+                })
 
-        return Response({"received": processed_count}, status=status.HTTP_201_CREATED)
+        response_data = {"received": processed_count}
+        if processed_count:
+            response_data["indexing"] = "queued"
+        if indexing_errors:
+            response_data["indexing"] = "unavailable"
+            response_data["indexingErrors"] = indexing_errors
+        if upload_errors:
+            response_data["uploadErrors"] = upload_errors
+        if processed_count:
+            return Response(response_data, status=status.HTTP_201_CREATED)
+        if server_errors:
+            return Response(response_data, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response(response_data, status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
         tags=["Administration"],

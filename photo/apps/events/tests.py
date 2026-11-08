@@ -1,6 +1,12 @@
+from io import BytesIO
+import tempfile
 from django.test import TestCase
+from django.test import override_settings
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
+from unittest.mock import patch
+from PIL import Image
 from apps.events.models import Event
 from apps.media.models import Photo
 
@@ -138,6 +144,44 @@ class EventsAPITestCase(TestCase):
         self.assertFalse(self.photo.is_public)
         self.assertEqual(self.photo.legend, "Photo privée VIP")
 
+    def _upload_photo(self):
+        image_buffer = BytesIO()
+        Image.new("RGB", (200, 200), color="white").save(image_buffer, format="JPEG")
+        image = SimpleUploadedFile(
+            "portrait.jpg",
+            image_buffer.getvalue(),
+            content_type="image/jpeg",
+        )
+        self.client.force_authenticate(user=self.admin_user)
+        return self.client.post(
+            f"/admin/events/{self.event.slug}/media/",
+            {"files": [image]},
+            format="multipart",
+        )
+
+    def test_media_upload_queues_face_indexing(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            with patch("apps.media.views.index_event_photos.delay") as enqueue_index:
+                response = self._upload_photo()
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["received"], 1)
+        self.assertEqual(response.data["indexing"], "queued")
+        enqueue_index.assert_called_once()
+
+    def test_media_upload_reports_when_indexing_queue_is_unavailable(self):
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            with patch(
+                "apps.media.views.index_event_photos.delay",
+                side_effect=ConnectionError("Redis is unavailable"),
+            ):
+                response = self._upload_photo()
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["received"], 1)
+        self.assertEqual(response.data["indexing"], "unavailable")
+        self.assertEqual(len(response.data["indexingErrors"]), 1)
+
     def test_manager_can_only_invite_photographer(self):
         from apps.organizations.models import Organization, OrganizationMembership
         owner_user = User.objects.create_user(username="owner1", password="password123")
@@ -162,4 +206,3 @@ class EventsAPITestCase(TestCase):
         }, format="json")
         self.assertEqual(res_ok.status_code, 201)
         self.assertEqual(res_ok.json()["role"], "photographer")
-

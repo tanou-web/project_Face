@@ -1,11 +1,48 @@
 import logging
 import numpy as np
 from celery import shared_task
+from django.db import transaction
 from apps.participants.models import Participant, FaceReference, PhotoMatch
-from apps.media.models import FaceIndex
-from .utils import MATCH_THRESHOLD
+from apps.media.models import FaceIndex, Photo
+from .utils import MATCH_THRESHOLD, extract_embeddings_from_bytes
 
 logger = logging.getLogger(__name__)
+
+@shared_task(autoretry_for=(Exception,), retry_backoff=True, retry_kwargs={"max_retries": 3})
+def index_event_photos(event_slug: str, photo_ids: list[int]):
+    """Indexe un lot de photos puis recalcule une fois les correspondances de l'événement."""
+    photos = Photo.objects.filter(
+        event__slug=event_slug,
+        pk__in=photo_ids,
+    ).select_related("event")
+    for photo in photos.iterator():
+        with photo.file.open("rb") as image_file:
+            face_results = extract_embeddings_from_bytes(image_file.read())
+
+        with transaction.atomic():
+            FaceIndex.objects.filter(photo=photo).delete()
+            FaceIndex.objects.bulk_create([
+                FaceIndex(
+                    photo=photo,
+                    embedding=face["embedding"],
+                    bbox=face.get("bbox"),
+                )
+                for face in face_results
+            ])
+
+    participants = Participant.objects.filter(
+        face_reference__isnull=False
+    ).only("pk").iterator()
+    for participant in participants:
+        match_participant_to_event.delay(participant.pk, event_slug)
+
+    logger.info(
+        "Indexation faciale terminée: événement=%s photos=%s",
+        event_slug,
+        len(photo_ids),
+    )
+    return {"event_slug": event_slug, "indexed_photos": len(photo_ids)}
+
 
 @shared_task
 def match_participant_to_event(participant_id: int, event_slug: str):

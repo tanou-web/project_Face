@@ -14,14 +14,20 @@ DJANGO_ALLOWED_HOSTS=photo-scan-api-9o78.onrender.com
 DATABASE_URL=postgresql://user:password@host:5432/dbname
 
 # Frontend URL
-FRONTEND_URL=https://votre-frontend.onrender.com
+FRONTEND_URL=https://platforme-photo-scan.vercel.app
 
 # CORS (Optionnel si CORS_ALLOW_ALL_ORIGINS=True)
 CORS_ALLOWED_ORIGINS=https://votre-frontend.onrender.com,https://autre-domaine.com
 
-# Celery / Redis (Si vous utilisez Redis)
-CELERY_BROKER_URL=redis://red-xxxxx:6379/0
-CELERY_RESULT_BACKEND=redis://red-xxxxx:6379/0
+# Médias permanents (Cloudflare R2)
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_BUCKET_NAME=photo-scan-media
+R2_ENDPOINT_URL=https://<account-id>.r2.cloudflarestorage.com
+R2_PUBLIC_DOMAIN=<domaine-public-du-bucket>
+
+# Celery / Redis (requis pour l'indexation faciale en arrière-plan)
+CELERY_BROKER_URL=rediss://...
 ```
 
 ---

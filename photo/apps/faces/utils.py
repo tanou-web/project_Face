@@ -88,6 +88,15 @@ def extract_embeddings(image_path: str) -> list[dict]:
     Retourne une liste de dictionnaires [{"embedding": list[float] unitaire, "bbox": list[float]}].
     """
     img = cv2.imread(image_path)
+    return _extract_embeddings_from_image(img)
+
+def extract_embeddings_from_bytes(image_bytes: bytes) -> list[dict]:
+    """Extrait les visages d'une image lue via le stockage Django, local ou distant."""
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    return _extract_embeddings_from_image(img)
+
+def _extract_embeddings_from_image(img) -> list[dict]:
     if img is None:
         return []
     rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)

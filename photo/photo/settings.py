@@ -12,6 +12,7 @@ from pathlib import Path
 from datetime import timedelta
 import os
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 
 # ==============================================================================
 # CHEMINS DU SYSTÈME DE FICHIERS
@@ -40,8 +41,8 @@ ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '*').split(',')
 
 # URL de base de l'application Web Frontend (React, Vue, Next.js, etc.)
 # Utilisée pour générer les liens d'invitation et d'activation WhatsApp/SMS.
-# ⚠️  Sur Render : définissez la variable d'environnement FRONTEND_URL=https://platforme-photo-scan.onrender.com
-FRONTEND_URL = os.environ.get('FRONTEND_URL', '').rstrip('/')
+# Sur Render : définissez FRONTEND_URL=https://platforme-photo-scan.vercel.app
+FRONTEND_URL = os.environ.get('FRONTEND_URL', '').strip().strip('"\'').strip().rstrip('/')
 
 # ==============================================================================
 # APPLICATIONS INSTALLÉES
@@ -60,6 +61,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',    # Authentification par jetons JSON Web Token
     'corsheaders',                 # Gestion des en-têtes CORS pour les clients frontends
     'drf_spectacular',             # Génération automatique de la spécification OpenAPI 3 / Swagger
+    'storages',                    # Stockage objet S3-compatible (Cloudflare R2)
 
     # Applications métier internes du domaine Photo Scan
     'apps.organizations',          # Gestion SaaS multi-tenant, membres et invitations WhatsApp
@@ -177,20 +179,65 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# WhiteNoise permet à l'application Python de servir elle-même ses fichiers statiques
-# compilés et compressés (gzip/brotli) en production, sans nécessiter de serveur Nginx séparé.
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedStaticFilesStorage'
-
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
-# En production sans DEBUG, Django ne sert pas les médias automatiquement.
-# Solution temporaire pour Render gratuit : servir via WhiteNoise (moins performant que S3/Cloudinary)
-# Pour un usage production avec beaucoup de médias, migrez vers Cloudinary ou AWS S3.
-if not DEBUG:
-    # Autoriser WhiteNoise à servir les médias en plus des statiques
-    WHITENOISE_AUTOREFRESH = True
-    WHITENOISE_USE_FINDERS = True
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedStaticFilesStorage',
+    },
+}
+
+def _clean_r2_env(name):
+    return os.environ.get(name, '').strip().strip('"\'').strip()
+
+
+_r2_settings = {
+    'access_key': _clean_r2_env('R2_ACCESS_KEY_ID'),
+    'secret_key': _clean_r2_env('R2_SECRET_ACCESS_KEY'),
+    'bucket_name': _clean_r2_env('R2_BUCKET_NAME'),
+    'endpoint_url': _clean_r2_env('R2_ENDPOINT_URL').rstrip('/'),
+    'custom_domain': _clean_r2_env('R2_PUBLIC_DOMAIN').rstrip('/'),
+}
+if any(_r2_settings.values()):
+    _r2_env_names = {
+        'access_key': 'R2_ACCESS_KEY_ID',
+        'secret_key': 'R2_SECRET_ACCESS_KEY',
+        'bucket_name': 'R2_BUCKET_NAME',
+        'endpoint_url': 'R2_ENDPOINT_URL',
+        'custom_domain': 'R2_PUBLIC_DOMAIN',
+    }
+    _missing_r2_settings = [
+        _r2_env_names[name] for name, value in _r2_settings.items() if not value
+    ]
+    if _missing_r2_settings:
+        raise ImproperlyConfigured(
+            'Configuration R2 incomplète. Variables manquantes : '
+            + ', '.join(_missing_r2_settings)
+        )
+
+    _r2_settings['custom_domain'] = (
+        _r2_settings['custom_domain']
+        .removeprefix('https://')
+        .removeprefix('http://')
+    )
+    STORAGES['default'] = {
+        'BACKEND': 'storages.backends.s3.S3Storage',
+        'OPTIONS': {
+            **_r2_settings,
+            'region_name': 'auto',
+            'signature_version': 's3v4',
+            'addressing_style': 'path',
+            'default_acl': None,
+            'file_overwrite': False,
+            'querystring_auth': False,
+            'url_protocol': 'https:',
+            'object_parameters': {'CacheControl': 'max-age=86400'},
+        },
+    }
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -219,7 +266,7 @@ CORS_ALLOWED_ORIGINS = list(set([
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5174",
     "http://127.0.0.1:5175",
-    # Production Frontend (Render)
+    # Frontend de production (Vercel)
     "https://platforme-photo-scan.vercel.app",
     "https://platforme-photo-scan.onrender.com",
 ] + _extra_origins))
@@ -320,7 +367,7 @@ SIMPLE_JWT = {
 # ces traitements sont délégués à des files d'attente (broker Redis) consommées par des workers.
 # CELERY_TASK_ALWAYS_EAGER est à False pour garantir un traitement non-bloquant en production.
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', CELERY_BROKER_URL)
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'

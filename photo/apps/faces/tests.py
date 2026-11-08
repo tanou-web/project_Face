@@ -1,3 +1,7 @@
+import tempfile
+from unittest.mock import patch
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import override_settings
 import numpy as np
 from django.test import TestCase
 from apps.faces.utils import cosine_similarity, is_same_person, validate_selfie, MATCH_THRESHOLD
@@ -26,6 +30,11 @@ class FaceUtilsTestCase(TestCase):
         result = validate_selfie(bad_bytes)
         self.assertFalse(result["valid"])
         self.assertIn("illisible", result["error"])
+
+    def test_extract_embeddings_from_invalid_bytes(self):
+        from apps.faces.utils import extract_embeddings_from_bytes
+
+        self.assertEqual(extract_embeddings_from_bytes(b"not an image"), [])
 
     def test_task_matching_matrix(self):
         from apps.events.models import Event
@@ -78,3 +87,39 @@ class FaceUtilsTestCase(TestCase):
         matches = PhotoMatch.objects.filter(participant=participant)
         self.assertEqual(matches.count(), 1)
         self.assertEqual(matches.first().photo_id, photo1.id)
+
+    def test_index_event_photos_reads_storage_and_queues_matching(self):
+        from apps.events.models import Event
+        from apps.media.models import Photo, FaceIndex
+        from apps.participants.models import Participant, FaceReference
+        from apps.faces.tasks import index_event_photos
+
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            event = Event.objects.create(
+                slug="async-index-event",
+                name="Async Index Event",
+                tagline="Tagline",
+                description="Desc",
+                city="Ouaga",
+                date="2026-07-18",
+                status="en_ligne",
+            )
+            photo = Photo.objects.create(
+                event=event,
+                file=SimpleUploadedFile("photo.jpg", b"stored image"),
+            )
+            participant = Participant.objects.create(
+                first_name="Test",
+                last_name="User",
+                phone="+22670000001",
+            )
+            FaceReference.objects.create(participant=participant, embedding=[1.0] * 512)
+            face_results = [{"embedding": [1.0] * 512, "bbox": [1, 2, 3, 4]}]
+
+            with patch("apps.faces.tasks.extract_embeddings_from_bytes", return_value=face_results):
+                with patch("apps.faces.tasks.match_participant_to_event.delay") as enqueue_match:
+                    result = index_event_photos(event.slug, [photo.pk])
+
+        self.assertEqual(result["indexed_photos"], 1)
+        self.assertEqual(FaceIndex.objects.filter(photo=photo).count(), 1)
+        enqueue_match.assert_called_once_with(participant.pk, event.slug)
